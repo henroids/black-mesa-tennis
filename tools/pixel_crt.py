@@ -56,7 +56,7 @@ def pixelate(path, cells, cell_size, grey=None):
     else:
         # Three tones: black, one grey, white. The mid-tones become solid grey (easier to
         # read than a checkerboard), with a light dither only right at the edges between tones.
-        low = 0.30 + 0.08 * (pattern - 0.5)
+        low = 0.38 + 0.08 * (pattern - 0.5)  # higher = more of the shadows go black
         high = 0.66 + 0.08 * (pattern - 0.5)
         bw = np.where(small > high, 255, np.where(small > low, grey, 0)).astype(np.uint8)
 
