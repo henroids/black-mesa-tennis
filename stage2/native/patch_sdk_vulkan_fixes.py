@@ -1111,6 +1111,44 @@ if "tt_tracker_stats[4]" not in t:
     cp.write_text(c)
     changed.append("presentation and queue-lock timers")
 
+# ---- 21. Present without a wait semaphore. v33: the UI thread's vkQueuePresentKHR took
+#          ~15 ms per present while holding the shared VkQueue lock, and the GPU command
+#          thread waited ~22 ms per frame for that lock. On Android the driver turns a
+#          present that waits on a semaphore into vkQueueSignalReleaseImageANDROID, which
+#          can fall back to idling the whole queue. Now the UI thread waits for its own
+#          paint submission's fence (without the queue lock) and presents with no
+#          semaphores, so the present is quick. TT_PRESENT_FENCE=off disables (with 13).
+pp = sdk / "src/ui/vulkan/vulkan_presenter.cpp"
+t = pp.read_text()
+if "tt-android: present without semaphore" not in t:
+    reps = [
+        ("  submit_info.signalSemaphoreCount = 1;\n  submit_info.pSignalSemaphores = &present_semaphore;\n",
+         "  // tt-android: present without semaphore (see patch notes)\n"
+         "  submit_info.signalSemaphoreCount = tt_fence_acquire ? 0 : 1;\n"
+         "  submit_info.pSignalSemaphores = tt_fence_acquire ? nullptr : &present_semaphore;\n"),
+        ("  VkPresentInfoKHR present_info;\n  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;\n"
+         "  present_info.pNext = nullptr;\n  present_info.waitSemaphoreCount = 1;\n"
+         "  present_info.pWaitSemaphores = &present_semaphore;\n",
+         "  if (tt_fence_acquire) {\n"
+         "    // Wait for the paint on the CPU instead of in the present.\n"
+         "    const auto tt_pw0 = std::chrono::steady_clock::now();\n"
+         "    paint_context_.submission_tracker.AwaitSubmissionCompletion(\n"
+         "        paint_context_.submission_tracker.GetCurrentSubmission() - 1);\n"
+         "    __atomic_fetch_add(&tt_tracker_stats[6], uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(\n"
+         "        std::chrono::steady_clock::now() - tt_pw0).count()), __ATOMIC_RELAXED);\n"
+         "  }\n"
+         "  VkPresentInfoKHR present_info;\n  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;\n"
+         "  present_info.pNext = nullptr;\n"
+         "  present_info.waitSemaphoreCount = tt_fence_acquire ? 0 : 1;\n"
+         "  present_info.pWaitSemaphores = tt_fence_acquire ? nullptr : &present_semaphore;\n"),
+    ]
+    for old, new in reps:
+        if t.count(old) != 1:
+            sys.exit("present-without-semaphore patch point not found: " + old.strip()[:60])
+        t = t.replace(old, new)
+    pp.write_text(t)
+    changed.append("present without wait semaphores (paint awaited on the CPU)")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()

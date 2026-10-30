@@ -683,7 +683,7 @@ void RunProfiler(std::string dir) {
                            (tracker[2] - tracker_prev[2]) / sw, (tracker[0] - tracker_prev[0]) / 1e6 / sw,
                            (tracker[3] - tracker_prev[3]) / sw, (tracker[1] - tracker_prev[1]) / 1e6 / sw);
               std::fprintf(f, "  presentation per frame: refresher %.2f ms, guest-output queue-lock wait "
-                              "%.2f ms; UI thread: swapchain acquire wait %.2f ms, present %.2f ms\n",
+                              "%.2f ms; UI thread: swapchain acquire + paint waits %.2f ms, present %.2f ms\n",
                            (tracker[4] - tracker_prev[4]) / 1e6 / sw, (tracker[5] - tracker_prev[5]) / 1e6 / sw,
                            (tracker[6] - tracker_prev[6]) / 1e6 / sw, (tracker[7] - tracker_prev[7]) / 1e6 / sw);
               std::memcpy(tracker_prev, tracker, sizeof tracker_prev);
