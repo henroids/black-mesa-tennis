@@ -827,6 +827,146 @@ if "tt_fence_stats" not in c:
     p.write_text(c)
     changed.append("fence-check segment timers")
 
+# ---- 18. GPU progress from a memory marker instead of fence queries. v29 measured the
+#          fence status check itself at ~13 ms per call (26 ms per frame) on KGSL drivers,
+#          while the GPU had finished long before. Each submission now ends by writing
+#          its number into a small host-visible buffer (after a full barrier); the CPU
+#          reads that number to know what's finished, with no driver call. Fences are
+#          still signalled by the driver; finished ones are destroyed a few submissions
+#          later instead of being reset and reused. TT_FENCE_MARKER=off restores upstream.
+p = sdk / "src/graphics/vulkan/command_processor.cpp"
+c = p.read_text()
+if "tt_marker::" not in c:
+    helper = """
+// ---- tt-android: GPU progress marker (see patch 18 notes) ----
+namespace rex::graphics::vulkan {
+namespace tt_marker {
+bool enabled = [] {
+  const char* v = std::getenv("TT_FENCE_MARKER");
+  return !(v && std::string_view(v) == "off");
+}();
+bool init_failed = false;
+VkBuffer buffer = VK_NULL_HANDLE;
+VkDeviceMemory memory = VK_NULL_HANDLE;
+volatile uint32_t* mapped = nullptr;
+PFN_vkCmdFillBuffer fill = nullptr;
+std::deque<std::pair<uint64_t, VkFence>> graveyard;
+
+bool Ready(const VulkanCommandProcessor& cp) {
+  if (!enabled || init_failed) return false;
+  if (mapped) return true;
+  init_failed = true;
+  const ui::vulkan::VulkanDevice* device = cp.GetVulkanDevice();
+  const auto& dfn = device->functions();
+  fill = reinterpret_cast<PFN_vkCmdFillBuffer>(
+      device->vulkan_instance()->functions().vkGetDeviceProcAddr(device->device(),
+                                                                 "vkCmdFillBuffer"));
+  if (!fill) return false;
+  if (!ui::vulkan::util::CreateDedicatedAllocationBuffer(
+          device, 256, VK_BUFFER_USAGE_TRANSFER_DST_BIT, ui::vulkan::util::MemoryPurpose::kReadback,
+          buffer, memory)) {
+    return false;
+  }
+  void* ptr = nullptr;
+  if (dfn.vkMapMemory(device->device(), memory, 0, VK_WHOLE_SIZE, 0, &ptr) != VK_SUCCESS || !ptr) {
+    return false;
+  }
+  mapped = static_cast<volatile uint32_t*>(ptr);
+  mapped[0] = 0;
+  init_failed = false;
+  REXLOG_INFO("tt: GPU progress marker active (fence queries bypassed)");
+  return true;
+}
+
+// Highest submission the GPU has fully finished, as far as the marker says.
+uint64_t Done(const VulkanCommandProcessor& cp, uint64_t completed) {
+  const ui::vulkan::VulkanDevice* device = cp.GetVulkanDevice();
+  VkMappedMemoryRange range = {};
+  range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+  range.memory = memory;
+  range.size = VK_WHOLE_SIZE;
+  device->functions().vkInvalidateMappedMemoryRanges(device->device(), 1, &range);
+  const uint32_t low = mapped[0];
+  uint64_t value = (completed & ~uint64_t(0xFFFFFFFFu)) | low;
+  if (value < completed) value += uint64_t(1) << 32;
+  return value;
+}
+}  // namespace tt_marker
+}  // namespace rex::graphics::vulkan
+"""
+    ns = c.find("\nnamespace rex::graphics::vulkan {")
+    if ns < 0:
+        sys.exit("marker: namespace anchor not found")
+    c = c[:ns] + "\n" + helper + c[ns:]
+    for inc in ("#include <deque>", "#include <thread>", "#include <cstdlib>", "#include <string_view>"):
+        if inc not in c:
+            c = c.replace("#include", inc + "\n#include", 1)
+    # 1. write the marker at the end of every submission
+    old = "    if (dfn.vkEndCommandBuffer(command_buffer.buffer) != VK_SUCCESS) {\n"
+    new = ("    if (tt_marker::Ready(*this)) {  // tt-android: GPU progress marker\n"
+           "      VkMemoryBarrier tt_before = {};\n"
+           "      tt_before.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;\n"
+           "      tt_before.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;\n"
+           "      tt_before.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;\n"
+           "      dfn.vkCmdPipelineBarrier(command_buffer.buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,\n"
+           "                               VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &tt_before, 0, nullptr,\n"
+           "                               0, nullptr);\n"
+           "      tt_marker::fill(command_buffer.buffer, tt_marker::buffer, 0, 4,\n"
+           "                      uint32_t(GetCurrentSubmission()));\n"
+           "      VkMemoryBarrier tt_after = {};\n"
+           "      tt_after.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;\n"
+           "      tt_after.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;\n"
+           "      tt_after.dstAccessMask = VK_ACCESS_HOST_READ_BIT;\n"
+           "      dfn.vkCmdPipelineBarrier(command_buffer.buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,\n"
+           "                               VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &tt_after, 0, nullptr, 0,\n"
+           "                               nullptr);\n"
+           "    }\n" + old)
+    if c.count(old) != 1:
+        sys.exit("marker: vkEndCommandBuffer anchor not found")
+    c = c.replace(old, new)
+    # 2. use the marker for completion, before the fence wait / poll
+    old = "  size_t fences_awaited = 0;\n"
+    new = old + ("  if (tt_marker::Ready(*this)) {  // tt-android: GPU progress marker\n"
+                 "    uint64_t tt_done = tt_marker::Done(*this, submission_completed_);\n"
+                 "    if (await_submission > tt_done) {\n"
+                 "      const auto tt_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);\n"
+                 "      while (await_submission > tt_done && std::chrono::steady_clock::now() < tt_deadline) {\n"
+                 "        std::this_thread::sleep_for(std::chrono::microseconds(50));\n"
+                 "        tt_done = tt_marker::Done(*this, submission_completed_);\n"
+                 "      }\n"
+                 "    }\n"
+                 "    if (await_submission <= tt_done) {\n"
+                 "      // Marker covers everything needed: skip the driver fence wait and poll.\n"
+                 "      fences_awaited = size_t(std::min<uint64_t>(\n"
+                 "          fences_total, tt_done > submission_completed_ ? tt_done - submission_completed_ : 0));\n"
+                 "      fences_total = fences_awaited;\n"
+                 "      await_submission = 0;\n"
+                 "    }\n"
+                 "  }\n")
+    if c.count(old) != 1:
+        sys.exit("marker: fences_awaited anchor not found")
+    c = c.replace(old, new)
+    # 3. don't reset/reuse fences the marker retired; destroy them a few submissions later
+    old = ("  fences_free_.insert(fences_free_.cend(), submissions_in_flight_fences_.cbegin(),\n"
+           "                      submissions_in_flight_fences_awaited_end);\n")
+    new = ("  if (tt_marker::Ready(*this)) {  // tt-android: GPU progress marker\n"
+           "    for (auto it = submissions_in_flight_fences_.cbegin(); it != submissions_in_flight_fences_awaited_end;\n"
+           "         ++it) {\n"
+           "      tt_marker::graveyard.emplace_back(submission_completed_ + fences_awaited, *it);\n"
+           "    }\n"
+           "    while (!tt_marker::graveyard.empty() &&\n"
+           "           tt_marker::graveyard.front().first + 8 <= submission_completed_ + fences_awaited) {\n"
+           "      dfn.vkDestroyFence(device, tt_marker::graveyard.front().second, nullptr);\n"
+           "      tt_marker::graveyard.pop_front();\n"
+           "    }\n"
+           "  } else {\n"
+           "  " + old.replace("\n                      ", "\n                        ") + "  }\n")
+    if c.count(old) != 1:
+        sys.exit("marker: fence reclaim anchor not found")
+    c = c.replace(old, new)
+    p.write_text(c)
+    changed.append("GPU progress read from a memory marker (no fence queries)")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()
