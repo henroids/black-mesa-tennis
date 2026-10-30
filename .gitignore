@@ -1,0 +1,20 @@
+# Never commit game data or anything built from it.
+*.iso
+*.xex
+*.rpf
+*.apk
+*.zip
+generated/
+private_work/
+dist/
+# Logs and code dumps from devices (may contain game code)
+logs/
+logs2/
+*hotcode*.txt
+*tiling_scan*.txt
+*.log
+# Build output
+out/
+build/
+.gradle/
+*.so

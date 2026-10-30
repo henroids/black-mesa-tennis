@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Native libraries are built by the Stage 1/2 CMake step and staged into jniLibs/.
+// The patched offline-menu flash.rpf is staged into assets/.
+android {
+    namespace 'org.libsdl.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'org.tabletennis.recomp'
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0-personal'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['jniLibs']
+            assets.srcDirs = ['assets']
+        }
+    }
+
+    buildTypes {
+        debug { minifyEnabled false }
+    }
+
+    androidResources {
+        // flash.rpf must stay uncompressed so its size can be checked cheaply.
+        noCompress 'rpf'
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+            keepDebugSymbols += ['**/*.so']
+        }
+    }
+
+    lint { abortOnError false; checkReleaseBuilds false }
+}
