@@ -46,7 +46,8 @@ If a stage fails, it says which log zip to look at (`~/tt-android/tt-stage1-logs
 | Presenter fence tracker hit the same slow query on every swap (v30 profile) | v31: young fences aren't queried (tracker cost ~0) |
 | GPU command thread painted the screen itself and waited for the display refresh every frame (v31 profile) | v32: present from the UI thread |
 | UI thread's present held the shared GPU queue ~15 ms; command thread waited ~22 ms/frame for it (v33) | v34: present without semaphores (queue-lock wait → 0) |
-| Host side idle, game still ~33 FPS: suspect the game paces on the 60 Hz guest vblank interrupt | v35: test options for faster vblank interrupts |
+| Host side idle, game still ~33 FPS: suspect the game paces on the 60 Hz guest vblank interrupt | v35: ruled out (240 Hz vblank changed nothing) |
+| No sampler overflows; GPU command thread waits ~16 ms/frame for the GPU while our own work is ~10 ms (v36) | v37: test whether 60 Hz screen redraws compete for the GPU |
 
 ## License
 

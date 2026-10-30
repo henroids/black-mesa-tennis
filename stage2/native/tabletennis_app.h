@@ -81,7 +81,14 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
     {
       using clock = std::chrono::steady_clock;
       static auto next_draw = clock::now();
-      constexpr auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / 60);
+      // TT_UI_HZ: test option to redraw the screen less often (each redraw is a GPU paint
+      // pass on the same queue as the game's rendering).
+      static const long long ui_hz = [] {
+        const char* v = std::getenv("TT_UI_HZ");
+        const long long hz = v ? std::atoll(v) : 60;
+        return hz >= 10 && hz <= 240 ? hz : 60LL;
+      }();
+      const auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / ui_hz);
       auto now = clock::now();
       static const bool ui_uncapped = std::getenv("TT_UI_UNCAPPED") != nullptr;
       if (!ui_uncapped && next_draw > now) std::this_thread::sleep_until(next_draw);
