@@ -58,7 +58,16 @@ def pixelate(path, cells, cell_size, grey=None):
         # read than a checkerboard), with a light dither only right at the edges between tones.
         low = 0.38 + 0.08 * (pattern - 0.5)  # higher = more of the shadows go black
         high = 0.66 + 0.08 * (pattern - 0.5)
-        bw = np.where(small > high, 255, np.where(small > low, grey, 0)).astype(np.uint8)
+        q = np.where(small > high, 2, np.where(small > low, 1, 0)).astype(np.uint8)
+        # Tidy up: a lone pixel that matches none of its 8 neighbours takes the most
+        # common tone around it (removes speckle in busy areas, keeps real details).
+        p = np.pad(q, 1, mode="edge")
+        nb = np.stack([p[1 + dy:1 + dy + rows, 1 + dx:1 + dx + cols]
+                       for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx])
+        lone = (nb != q).all(0)
+        majority = np.stack([(nb == t).sum(0) for t in range(3)]).argmax(0)
+        q = np.where(lone, majority, q).astype(np.uint8)
+        bw = np.array([0, grey, 255], np.uint8)[q]
 
     big = Image.fromarray(bw).convert("RGB").resize((cols * cell_size, rows * cell_size),
                                                     Image.NEAREST)
