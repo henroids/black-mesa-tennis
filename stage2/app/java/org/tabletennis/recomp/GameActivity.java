@@ -15,6 +15,33 @@ import org.libsdl.app.SDLActivity;
 public final class GameActivity extends SDLActivity {
     private static final String TAG = "TableTennis";
 
+    /**
+     * Keeps the previous session's profile and timeline (they're rewritten each run) in
+     * logs/runs/, named by when that run's files were last written, so exported logs cover
+     * several runs. Only the newest 8 of each are kept.
+     */
+    private static void archivePreviousRun(File logs) {
+        File runs = new File(logs, "runs");
+        String[] names = {"profile.txt", "timeline.txt"};
+        java.text.SimpleDateFormat stamp =
+                new java.text.SimpleDateFormat("MM-dd_HH-mm-ss", java.util.Locale.ROOT);
+        for (String name : names) {
+            File f = new File(logs, name);
+            if (!f.isFile()) continue;
+            runs.mkdirs();
+            File to = new File(runs, stamp.format(new java.util.Date(f.lastModified())) + "_" + name);
+            if (!f.renameTo(to)) f.delete();
+        }
+        File[] all = runs.listFiles(File::isFile);
+        if (all == null) return;
+        for (String name : names) {
+            List<File> kind = new java.util.ArrayList<>();
+            for (File f : all) if (f.getName().endsWith("_" + name)) kind.add(f);
+            kind.sort((a, b) -> a.getName().compareTo(b.getName()));
+            for (int i = 0; i < kind.size() - 8; i++) kind.get(i).delete();
+        }
+    }
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         // Everything the native side reads from the environment must be set before
         // SDLActivity.onCreate loads libmain.so.
@@ -35,6 +62,7 @@ public final class GameActivity extends SDLActivity {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
             File logs = GameFiles.logsDir(this);
             logs.mkdirs();
+            archivePreviousRun(logs);
             setEnv("TT_PROFILE", logs.getAbsolutePath());
             copySymbolLists(new File(logs, "syms"));
         }
