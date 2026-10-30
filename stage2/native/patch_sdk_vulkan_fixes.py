@@ -1429,6 +1429,43 @@ bool Kick(const VulkanCommandProcessor& cp) {
     cp.write_text(c)
     changed.append("GPU kick while waiting for the marker")
 
+# ---- 27. v45 (Turnip V38) timeline: the GPU sits ~11 ms between finishing a frame's
+#          submission (by its last timestamp) and the marker / the next submission starting.
+#          Time the submission's tail too (the final full barrier + marker write) and count
+#          pipeline barriers, to see whether the GPU's real work runs past the timestamps.
+#          tt_gputime_stats[7] tail ns, [15] pipeline barriers.
+t = dcb.read_text()
+if "TtGpuTimingTail" not in t:
+    reps = [
+        ("void TtGpuTimingEnd() {\n  tt_timing::Mark(0);\n  tt_timing::current = UINT32_MAX;\n}\n",
+         "uint32_t tt_tail_slot = UINT32_MAX;  // tt-android (patch 27)\n"
+         "void TtGpuTimingEnd() {\n  tt_timing::Mark(0);\n  tt_tail_slot = tt_timing::current;\n"
+         "  tt_timing::current = UINT32_MAX;\n}\n"
+         "// Last mark of a submission, after the marker write (just before vkEndCommandBuffer).\n"
+         "void TtGpuTimingTail() {\n"
+         "  if (tt_tail_slot == UINT32_MAX) return;\n"
+         "  tt_timing::current = tt_tail_slot;\n  tt_tail_slot = UINT32_MAX;\n"
+         "  tt_timing::Mark(5);\n  tt_timing::current = UINT32_MAX;\n}\n"),
+        ("      const uint8_t c = s.cat[k] < 5 ? s.cat[k] : 0;\n",
+         "      const uint8_t c = s.cat[k] < 5 ? s.cat[k] : s.cat[k] == 5 ? 7 : 0;  // 7: tail\n"),
+        ("      case Command::kVkPipelineBarrier: {\n",
+         "      case Command::kVkPipelineBarrier: {\n"
+         "        __atomic_fetch_add(&tt_gputime_stats[15], 1, __ATOMIC_RELAXED);  // tt-android\n"),
+    ]
+    for old, new in reps:
+        if t.count(old) != 1:
+            sys.exit("tail timing patch point not found: " + old.strip()[:60])
+        t = t.replace(old, new)
+    dcb.write_text(t)
+    c = cp.read_text()
+    old = "    if (dfn.vkEndCommandBuffer(command_buffer.buffer) != VK_SUCCESS) {\n"
+    if c.count(old) != 1:
+        sys.exit("tail timing: vkEndCommandBuffer not found")
+    c = c.replace(old, "    TtGpuTimingTail();  // tt-android (patch 27)\n" + old)
+    c = c.replace("void TtGpuTimingEnd();\n", "void TtGpuTimingEnd();\nvoid TtGpuTimingTail();\n", 1)
+    cp.write_text(c)
+    changed.append("GPU timing of the submission tail + barrier count")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).

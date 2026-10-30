@@ -697,6 +697,8 @@ void RunProfiler(std::string dir) {
                          ms(0) + ms(1) + ms(2) + ms(3) + ms(4), ms(1), per(8), ms(2), per(9),
                          ms(3), per(10), ms(4), per(11), ms(0),
                          static_cast<unsigned long long>(gtime[12] - gtime_prev[12]));
+            std::fprintf(f, "GPU submission tail per frame (final flush + marker write): %.2f ms; "
+                            "pipeline barriers per frame: %.0f\n", ms(7), per(15));
             const double nq = double(gtime[14] - gtime_prev[14]);
             const double nw = double(gtime[6] - gtime_prev[6]);
             std::fprintf(f, "GPU latency: submissions wait %.2f ms in the queue before the GPU "
