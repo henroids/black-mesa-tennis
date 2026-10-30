@@ -1338,6 +1338,15 @@ if "tt-android: fence check in marker wait" not in c:
     cp.write_text(c)
     changed.append("marker wait also checks the submission fence")
 
+# repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
+# build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
+# into the GPU-marker state and switched the marker off (FPS fell to ~28).
+f = sdk / "src/graphics/vulkan/command_processor.cpp"
+t = f.read_text()
+if "uint64_t tt_fence_stats[8] = {};" in t:
+    f.write_text(t.replace("uint64_t tt_fence_stats[8] = {};", "uint64_t tt_fence_stats[16] = {};"))
+    changed.append("repair: tt_fence_stats sized for 16 counters")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()
