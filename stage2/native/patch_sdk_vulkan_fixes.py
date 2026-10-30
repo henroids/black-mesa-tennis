@@ -1174,6 +1174,45 @@ if "TT_VBLANK_HZ" not in t:
     p.write_text(t)
     changed.append("guest vblank rate override (TT_VBLANK_HZ)")
 
+# ---- 23. Where the command processor sleeps now. v35: ~68% of the GPU command thread is in
+#          the GPU-progress marker's wait loop (sleep_for), reached from IssueDraw rather
+#          than from the frame throttle. Suspect: sampler-pool overflow, which makes a draw
+#          wait for earlier submissions to finish before samplers can be reused.
+#          tt_fence_stats: [6] marker-wait ns [7] marker waits;
+#          tt_frame_stats[7]: sampler overflows (draw waits); logs the sampler budget once.
+cp = sdk / "src/graphics/vulkan/command_processor.cpp"
+c = cp.read_text()
+if "tt_fence_stats[6]" not in c:
+    old = ("      while (await_submission > tt_done && std::chrono::steady_clock::now() < tt_deadline) {\n"
+           "        std::this_thread::sleep_for(std::chrono::microseconds(50));\n"
+           "        tt_done = tt_marker::Done(*this, submission_completed_);\n"
+           "      }\n")
+    new = ("      const auto tt_mw0 = std::chrono::steady_clock::now();\n"
+           "      __atomic_fetch_add(&tt_fence_stats[7], 1, __ATOMIC_RELAXED);\n" + old +
+           "      __atomic_fetch_add(&tt_fence_stats[6], uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(\n"
+           "          std::chrono::steady_clock::now() - tt_mw0).count()), __ATOMIC_RELAXED);\n")
+    if c.count(old) != 1:
+        sys.exit("marker wait timer patch point not found (needs 18)")
+    c = c.replace(old, new)
+    old = "    CheckSubmissionFenceAndDeviceLoss(sampler_overflow_await_submission);\n"
+    if c.count(old) != 1:
+        sys.exit("sampler overflow patch point not found")
+    c = c.replace(old, "    __atomic_fetch_add(&tt_frame_stats[7], 1, __ATOMIC_RELAXED);  // tt-android\n" + old)
+    if 'extern "C" uint64_t tt_frame_stats' not in c:
+        ns = c.find("\nnamespace")
+        c = c[:ns] + '\nextern "C" uint64_t tt_frame_stats[8];\n' + c[ns:]
+    cp.write_text(c)
+    tc = sdk / "src/graphics/vulkan/texture_cache.cpp"
+    t = tc.read_text()
+    old = ("  sampler_max_count_ =\n"
+           "      device_properties.maxSamplerAllocationCount - ui::vulkan::UISamplers::kSamplerCount - 16;\n")
+    if t.count(old) != 1:
+        sys.exit("sampler budget patch point not found")
+    t = t.replace(old, old + "  REXLOG_INFO(\"tt: sampler budget {} (device max {})\", sampler_max_count_,  // tt-android\n"
+                             "              device_properties.maxSamplerAllocationCount);\n")
+    tc.write_text(t)
+    changed.append("marker-wait and sampler-overflow counters")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()

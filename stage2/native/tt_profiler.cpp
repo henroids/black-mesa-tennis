@@ -510,7 +510,7 @@ void RunProfiler(std::string dir) {
   uint64_t frame_prev[8] = {};
   double window_swaps = 1.0;  // guest swaps in the current report window
   const uint64_t* fence = nullptr;
-  uint64_t fence_prev[6] = {};
+  uint64_t fence_prev[8] = {};
   const uint64_t* tracker = nullptr;
   uint64_t tracker_prev[8] = {};
   const uint64_t* work = nullptr;
@@ -647,6 +647,8 @@ void RunProfiler(std::string dir) {
           }
           {
             const double swaps2 = std::max<double>(1.0, double(frame[3] - frame_prev[3]));
+            std::fprintf(f, "sampler overflows per frame: %.2f\n",
+                         (frame[7] - frame_prev[7]) / swaps2);
             std::fprintf(f, "tiling per frame: %.1f bin selects, %.0f predicated packets run, "
                             "%.0f skipped\n",
                          (frame[5] - frame_prev[5]) / swaps2, (frame[6] - frame_prev[6]) / swaps2,
@@ -694,6 +696,8 @@ void RunProfiler(std::string dir) {
                               "cache updates %.2f ms, object destruction %.2f ms\n",
                            (fence[3] - fence_prev[3]) / sw, (fence[0] - fence_prev[0]) / 1e6 / sw,
                            (fence[1] - fence_prev[1]) / 1e6 / sw, (fence[2] - fence_prev[2]) / 1e6 / sw);
+              std::fprintf(f, "  GPU-marker waits per frame: %.1f waits, %.2f ms\n",
+                           (fence[7] - fence_prev[7]) / sw, (fence[6] - fence_prev[6]) / 1e6 / sw);
               std::fprintf(f, "  command-processor submit queue-lock wait per frame: %.2f ms (%.1f submits)\n",
                            (fence[4] - fence_prev[4]) / 1e6 / sw, (fence[5] - fence_prev[5]) / sw);
               std::memcpy(fence_prev, fence, sizeof fence_prev);
