@@ -1213,6 +1213,78 @@ if "tt_fence_stats[6]" not in c:
     tc.write_text(t)
     changed.append("marker-wait and sampler-overflow counters")
 
+# ---- 24. Frame timeline. v40: GPU work is ~10 ms per frame but frames take ~29 ms, and the
+#          60/30/20 Hz screen test changed nothing. Record a short timeline of what happens
+#          inside each frame (CPU submit, GPU start/end of every submission, the command
+#          processor's waits on the GPU, guest swaps) so the profiler can dump it.
+#          tt_timeline: 4096 events x {time ns, type, a, b}; tt_timeline_pos: events written.
+dcb = sdk / "src/graphics/vulkan/deferred_command_buffer.cpp"
+t = dcb.read_text()
+if "tt_timeline" not in t:
+    ring = """
+// ---- tt-android: frame timeline (read by the profiler via dlsym)
+extern "C" __attribute__((visibility("default"))) uint64_t tt_timeline[4096 * 4] = {};
+extern "C" __attribute__((visibility("default"))) uint64_t tt_timeline_pos[2] = {};
+extern "C" __attribute__((visibility("default"))) void TtTimelineEventAt(int64_t t_ns, uint32_t type,
+                                                                         uint64_t a, uint64_t b) {
+  if (t_ns <= 0) return;
+  const uint64_t i = __atomic_fetch_add(&tt_timeline_pos[0], 1, __ATOMIC_RELAXED) & 4095;
+  tt_timeline[i * 4 + 1] = type;
+  tt_timeline[i * 4 + 2] = a;
+  tt_timeline[i * 4 + 3] = b;
+  __atomic_store_n(&tt_timeline[i * 4 + 0], uint64_t(t_ns), __ATOMIC_RELEASE);
+}
+extern "C" __attribute__((visibility("default"))) void TtTimelineEvent(uint32_t type, uint64_t a,
+                                                                       uint64_t b) {
+  TtTimelineEventAt(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count(),
+                    type, a, b);
+}
+"""
+    anchor = "namespace rex::graphics::vulkan {\n"
+    if t.count(anchor) != 1:
+        sys.exit("timeline: namespace anchor not found")
+    t = t.replace(anchor, ring.lstrip("\n") + "\n" + anchor, 1)
+    reps = [
+        # 1 = CPU submits submission a
+        ("  s.count = 0;\n  s.pending = true;\n  s.collected = false;\n  s.cpu_submit_ns = NowNs();\n",
+         "  s.count = 0;\n  s.pending = true;\n  s.collected = false;\n  s.cpu_submit_ns = NowNs();\n"
+         "  TtTimelineEventAt(s.cpu_submit_ns, 1, submission, 0);  // tt-android timeline\n"),
+        # 2/3 = GPU starts / finishes submission a (b = GPU ns of that submission)
+        ("    __atomic_fetch_add(&tt_gputime_stats[14], 1, __ATOMIC_RELAXED);\n",
+         "    __atomic_fetch_add(&tt_gputime_stats[14], 1, __ATOMIC_RELAXED);\n"
+         "    TtTimelineEventAt(s.gpu_start_ns - offset_min, 2, s.submission, 0);  // tt-android timeline\n"
+         "    TtTimelineEventAt(s.gpu_end_ns - offset_min, 3, s.submission,\n"
+         "                      uint64_t(s.gpu_end_ns - s.gpu_start_ns));\n"),
+    ]
+    for old, new in reps:
+        if t.count(old) != 1:
+            sys.exit("timeline patch point not found: " + old.strip()[:60])
+        t = t.replace(old, new)
+    dcb.write_text(t)
+    c = cp.read_text()
+    old = ("      const auto tt_mw0 = std::chrono::steady_clock::now();\n"
+           "      __atomic_fetch_add(&tt_fence_stats[7], 1, __ATOMIC_RELAXED);\n")
+    if c.count(old) != 1:
+        sys.exit("timeline: marker wait point not found (needs 23)")
+    # 4 = command processor starts waiting for submission a (b = GPU finished up to b)
+    c = c.replace(old, old + "      TtTimelineEvent(4, await_submission, tt_done);  // tt-android timeline\n")
+    old = ("      __atomic_fetch_add(&tt_fence_stats[6], uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(\n"
+           "          std::chrono::steady_clock::now() - tt_mw0).count()), __ATOMIC_RELAXED);\n")
+    if c.count(old) != 1:
+        sys.exit("timeline: marker wait end not found")
+    # 5 = wait over (b = GPU finished up to b)
+    c = c.replace(old, old + "      TtTimelineEvent(5, await_submission, tt_done);  // tt-android timeline\n")
+    # 6 = command processor ends a submission (a = submission, b = 1 if it ends a frame)
+    old = "bool VulkanCommandProcessor::EndSubmission(bool is_swap) {\n"
+    if c.count(old) != 1:
+        sys.exit("timeline: EndSubmission not found")
+    c = c.replace(old, old + "  TtTimelineEvent(6, GetCurrentSubmission(), is_swap ? 1 : 0);  // tt-android timeline\n")
+    ns = c.find("\nnamespace")
+    c = (c[:ns] + '\nextern "C" void TtTimelineEvent(uint32_t type, uint64_t a, uint64_t b);\n' + c[ns:])
+    cp.write_text(c)
+    changed.append("frame timeline events")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()

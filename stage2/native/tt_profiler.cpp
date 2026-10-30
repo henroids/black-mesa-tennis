@@ -448,6 +448,63 @@ const uint64_t* FindStats(const char* name) {
   return nullptr;
 }
 
+// Frame timeline (patch 24 + the VdSwap hook): every 30 s from 0:30, append the last
+// ~1.5 s of events to timeline.txt so we can see where each frame's time goes.
+void DumpTimeline(const std::string& dir, double session) {
+  static double next_dump = 30.0;
+  static bool first = true;
+  if (session < next_dump) return;
+  next_dump += 30.0;
+  const uint64_t* ring = FindStats("tt_timeline");
+  if (!ring) return;
+  struct Ev { uint64_t t, type, a, b; };
+  std::vector<Ev> ev;
+  ev.reserve(4096);
+  uint64_t newest = 0;
+  for (int i = 0; i < 4096; ++i) {
+    Ev e{__atomic_load_n(&ring[i * 4], __ATOMIC_ACQUIRE), ring[i * 4 + 1], ring[i * 4 + 2], ring[i * 4 + 3]};
+    if (!e.t) continue;
+    newest = std::max(newest, e.t);
+    ev.push_back(e);
+  }
+  if (ev.empty()) return;
+  std::sort(ev.begin(), ev.end(), [](const Ev& x, const Ev& y) { return x.t < y.t; });
+  const uint64_t from = newest > 1500000000ull ? newest - 1500000000ull : 0;
+  FILE* f = std::fopen((dir + "/timeline.txt").c_str(), first ? "w" : "a");
+  if (!f) return;
+  first = false;
+  std::fprintf(f, "\n######## timeline at %d:%02d into the session (last 1.5 s; ms from first event) ########\n"
+               "# submit = CPU hands a GPU submission to the driver, gpu start/end = GPU timestamps,\n"
+               "# cp wait = command processor waits for the GPU, end sub = command processor closes\n"
+               "# a submission (frame = it ends a guest frame), SWAP = game presents a frame\n",
+               int(session) / 60, int(session) % 60);
+  uint64_t t0 = 0, last_swap = 0;
+  for (const Ev& e : ev) {
+    if (e.t < from) continue;
+    if (!t0) t0 = e.t;
+    const double ms = double(e.t - t0) / 1e6;
+    switch (e.type) {
+      case 1: std::fprintf(f, "%9.3f  submit      #%llu\n", ms, (unsigned long long)e.a); break;
+      case 2: std::fprintf(f, "%9.3f  gpu start   #%llu\n", ms, (unsigned long long)e.a); break;
+      case 3: std::fprintf(f, "%9.3f  gpu end     #%llu (%.2f ms on GPU)\n", ms, (unsigned long long)e.a,
+                           double(e.b) / 1e6); break;
+      case 4: std::fprintf(f, "%9.3f  cp wait     for #%llu (GPU done to #%llu)\n", ms,
+                           (unsigned long long)e.a, (unsigned long long)e.b); break;
+      case 5: std::fprintf(f, "%9.3f  cp wait end for #%llu (GPU done to #%llu)\n", ms,
+                           (unsigned long long)e.a, (unsigned long long)e.b); break;
+      case 6: std::fprintf(f, "%9.3f  end sub     #%llu%s\n", ms, (unsigned long long)e.a,
+                           e.b ? " (frame)" : ""); break;
+      case 7:
+        std::fprintf(f, "%9.3f  SWAP\n", ms);
+        if (last_swap) std::fprintf(f, "           (%.1f ms since previous swap)\n", double(e.t - last_swap) / 1e6);
+        last_swap = e.t;
+        break;
+      default: std::fprintf(f, "%9.3f  event %llu\n", ms, (unsigned long long)e.type); break;
+    }
+  }
+  std::fclose(f);
+}
+
 void WriteSection(FILE* f, const char* title, const std::unordered_map<uint64_t, uint32_t>& map,
                   uint32_t thread, uint32_t total, size_t limit) {
   std::vector<std::pair<uint32_t, uint32_t>> rows;  // count, loc
@@ -732,6 +789,7 @@ void RunProfiler(std::string dir) {
         }
         std::sort(rows.begin(), rows.end(), [](auto& a, auto& b) { return a.first > b.first; });
         for (auto& [pct, name] : rows) std::fprintf(f, "  %5.0f%%  %s\n", pct, name.c_str());
+        DumpTimeline(dir, session);
         if (!g_code_dumped && session >= 60.0) {
           g_code_dumped = true;
           DumpHotCode(dir, last);
