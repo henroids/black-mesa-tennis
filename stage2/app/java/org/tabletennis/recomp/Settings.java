@@ -138,7 +138,10 @@ final class Settings {
         args.add("--protect_zero=false");
         args.add("--gpu_allow_invalid_fetch_constants=true");
         if (occlusion == 1) args.add("--occlusion_query_enable=false");
-        if (pacing == 4) args.add("--host_present_from_non_ui_thread=false");
+        // Present from the UI thread. With the default (present from the guest-output thread)
+        // the GPU command thread itself painted and waited for a free swapchain image, i.e.
+        // for the display's next refresh, on every guest frame (v31 profile: ~50% of it).
+        args.add("--host_present_from_non_ui_thread=false");
         for (String extra : EXPERIMENT_ARGS[experiment]) args.add(extra);
         if (dumpShaders && shaderDumpPath != null) args.add("--dump_shaders=" + shaderDumpPath);
         return args;
