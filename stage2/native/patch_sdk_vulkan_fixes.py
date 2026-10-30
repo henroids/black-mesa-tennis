@@ -1048,6 +1048,69 @@ VkResult TtTimedStatus(const rex::ui::vulkan::VulkanDevice::Functions& dfn, VkDe
     p.write_text(t)
     changed.append("submission tracker skips status queries on young fences")
 
+# ---- 20. Lock / presentation timers. v32: the GPU command thread still spent ~45% blocked
+#          (futex) inside RefreshGuestOutputImpl. Candidates: the shared VkQueue mutex
+#          (held by the UI thread across vkQueuePresentKHR) or the refresher itself.
+#          tt_tracker_stats: [4] refresher ns [5] guest-output queue-lock wait ns
+#          [6] UI acquire-fence wait ns [7] UI present (incl. queue lock) ns
+#          tt_fence_stats: [4] command processor submit queue-lock wait ns [5] count
+pp = sdk / "src/ui/vulkan/vulkan_presenter.cpp"
+t = pp.read_text()
+if "tt_tracker_stats[4]" not in t:
+    def add_ns(slot, var, arr="tt_tracker_stats"):
+        return (f"__atomic_fetch_add(&{arr}[{slot}], uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>("
+                f"std::chrono::steady_clock::now() - {var}).count()), __ATOMIC_RELAXED);")
+    reps = [
+        ("  bool refresher_succeeded = refresher(context);\n",
+         "  const auto tt_r0 = std::chrono::steady_clock::now();  // tt-android\n"
+         "  bool refresher_succeeded = refresher(context);\n"
+         "  " + add_ns(4, "tt_r0") + "\n"),
+        ("    const VulkanDevice::Queue::Acquisition queue_acquisition =\n"
+         "        vulkan_device_->AcquireQueue(vulkan_device_->queue_family_graphics_compute(), 0);\n"
+         "    if (dfn.vkQueueSubmit(queue_acquisition.queue(), 0, nullptr, fence_acqusition.fence()) !=",
+         "    const auto tt_q0 = std::chrono::steady_clock::now();  // tt-android\n"
+         "    const VulkanDevice::Queue::Acquisition queue_acquisition =\n"
+         "        vulkan_device_->AcquireQueue(vulkan_device_->queue_family_graphics_compute(), 0);\n"
+         "    " + add_ns(5, "tt_q0") + "\n"
+         "    if (dfn.vkQueueSubmit(queue_acquisition.queue(), 0, nullptr, fence_acqusition.fence()) !="),
+        ("      dfn.vkWaitForFences(device, 1, &tt_acquire_fence, VK_TRUE, UINT64_MAX);\n",
+         "      const auto tt_a0 = std::chrono::steady_clock::now();\n"
+         "      dfn.vkWaitForFences(device, 1, &tt_acquire_fence, VK_TRUE, UINT64_MAX);\n"
+         "      " + add_ns(6, "tt_a0") + "\n"),
+        ("    const VulkanDevice::Queue::Acquisition queue_acquisition =\n"
+         "        vulkan_device_->AcquireQueue(paint_context_.present_queue_family, 0);\n"
+         "    present_result = dfn.vkQueuePresentKHR(queue_acquisition.queue(), &present_info);\n",
+         "    const auto tt_pr0 = std::chrono::steady_clock::now();  // tt-android\n"
+         "    const VulkanDevice::Queue::Acquisition queue_acquisition =\n"
+         "        vulkan_device_->AcquireQueue(paint_context_.present_queue_family, 0);\n"
+         "    present_result = dfn.vkQueuePresentKHR(queue_acquisition.queue(), &present_info);\n"
+         "    " + add_ns(7, "tt_pr0") + "\n"),
+    ]
+    for old, new in reps:
+        if t.count(old) != 1:
+            sys.exit("presenter timer patch point not found: " + old.strip()[:60])
+        t = t.replace(old, new)
+    t = t.replace("#include", "#include <chrono>\n#include <cstdint>\nextern \"C\" uint64_t tt_tracker_stats[8];\n#include", 1)
+    pp.write_text(t)
+    cp = sdk / "src/graphics/vulkan/command_processor.cpp"
+    c = cp.read_text()
+    old = ("    {\n"
+           "      ui::vulkan::VulkanDevice::Queue::Acquisition queue_acquisition =\n"
+           "          vulkan_device->AcquireQueue(vulkan_device->queue_family_graphics_compute(), 0);\n"
+           "      const auto tt_s0")
+    new = ("    {\n"
+           "      const auto tt_ql0 = std::chrono::steady_clock::now();  // tt-android\n"
+           "      ui::vulkan::VulkanDevice::Queue::Acquisition queue_acquisition =\n"
+           "          vulkan_device->AcquireQueue(vulkan_device->queue_family_graphics_compute(), 0);\n"
+           "      " + add_ns(4, "tt_ql0", "tt_fence_stats") + "\n"
+           "      __atomic_fetch_add(&tt_fence_stats[5], 1, __ATOMIC_RELAXED);\n"
+           "      const auto tt_s0")
+    if c.count(old) != 1:
+        sys.exit("cp queue-lock timer patch point not found")
+    c = c.replace(old, new)
+    cp.write_text(c)
+    changed.append("presentation and queue-lock timers")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()

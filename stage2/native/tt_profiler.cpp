@@ -510,9 +510,9 @@ void RunProfiler(std::string dir) {
   uint64_t frame_prev[8] = {};
   double window_swaps = 1.0;  // guest swaps in the current report window
   const uint64_t* fence = nullptr;
-  uint64_t fence_prev[4] = {};
+  uint64_t fence_prev[6] = {};
   const uint64_t* tracker = nullptr;
-  uint64_t tracker_prev[4] = {};
+  uint64_t tracker_prev[8] = {};
   const uint64_t* work = nullptr;
   uint64_t work_prev[8] = {};
   const uint64_t* gtime = nullptr;
@@ -682,6 +682,10 @@ void RunProfiler(std::string dir) {
                               "%.1f blocking waits (%.2f ms)\n",
                            (tracker[2] - tracker_prev[2]) / sw, (tracker[0] - tracker_prev[0]) / 1e6 / sw,
                            (tracker[3] - tracker_prev[3]) / sw, (tracker[1] - tracker_prev[1]) / 1e6 / sw);
+              std::fprintf(f, "  presentation per frame: refresher %.2f ms, guest-output queue-lock wait "
+                              "%.2f ms; UI thread: swapchain acquire wait %.2f ms, present %.2f ms\n",
+                           (tracker[4] - tracker_prev[4]) / 1e6 / sw, (tracker[5] - tracker_prev[5]) / 1e6 / sw,
+                           (tracker[6] - tracker_prev[6]) / 1e6 / sw, (tracker[7] - tracker_prev[7]) / 1e6 / sw);
               std::memcpy(tracker_prev, tracker, sizeof tracker_prev);
             }
             if (!fence) fence = FindStats("tt_fence_stats");
@@ -690,6 +694,8 @@ void RunProfiler(std::string dir) {
                               "cache updates %.2f ms, object destruction %.2f ms\n",
                            (fence[3] - fence_prev[3]) / sw, (fence[0] - fence_prev[0]) / 1e6 / sw,
                            (fence[1] - fence_prev[1]) / 1e6 / sw, (fence[2] - fence_prev[2]) / 1e6 / sw);
+              std::fprintf(f, "  command-processor submit queue-lock wait per frame: %.2f ms (%.1f submits)\n",
+                           (fence[4] - fence_prev[4]) / 1e6 / sw, (fence[5] - fence_prev[5]) / sw);
               std::memcpy(fence_prev, fence, sizeof fence_prev);
             }
             std::fprintf(f, "  per frame: CPU replay %.2f ms, vkQueueSubmit %.2f ms (%.1f calls), "
