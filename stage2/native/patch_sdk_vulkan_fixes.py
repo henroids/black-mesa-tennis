@@ -1522,6 +1522,91 @@ if "TtTl(" not in s:
     pp.write_text(s)
     changed.append("timeline: presenter refresh / paint / present")
 
+# ---- 29. v47 timeline: after every frame's swap submission the GPU idles ~13 ms with the
+#          next submission already queued, right after the presenter's fence-only (empty)
+#          vkQueueSubmit. On KGSL an empty submission becomes a "marker" command that is
+#          retired by the kernel's dispatcher rather than by the GPU, which appears to hold
+#          up the queue. Signal those fences with a tiny real command buffer instead.
+#          TT_EMPTY_SUBMIT=keep restores the empty submits.
+s = pp.read_text()
+if "TtSubmitSignal" not in s:
+    helper = """// tt-android (patch 29): fence-only submissions with one tiny real command buffer.
+static VkResult TtSubmitSignal(const VulkanDevice* device, VkQueue queue, VkFence fence) {
+  const VulkanDevice::Functions& dfn = device->functions();
+  static const bool keep_empty = [] {
+    const char* v = std::getenv("TT_EMPTY_SUBMIT");
+    return v && std::string_view(v) == "keep";
+  }();
+  // Callers hold the queue acquisition, so this is never entered concurrently.
+  static VkCommandPool pool = VK_NULL_HANDLE;
+  static VkCommandBuffer cb = VK_NULL_HANDLE;
+  static bool failed = false;
+  if (!keep_empty && !failed && cb == VK_NULL_HANDLE) {
+    failed = true;
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = device->queue_family_graphics_compute();
+    VkCommandBuffer new_cb = VK_NULL_HANDLE;
+    if (dfn.vkCreateCommandPool(device->device(), &pool_info, nullptr, &pool) == VK_SUCCESS) {
+      VkCommandBufferAllocateInfo alloc = {};
+      alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      alloc.commandPool = pool;
+      alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      alloc.commandBufferCount = 1;
+      if (dfn.vkAllocateCommandBuffers(device->device(), &alloc, &new_cb) == VK_SUCCESS) {
+        VkCommandBufferBeginInfo begin = {};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        if (dfn.vkBeginCommandBuffer(new_cb, &begin) == VK_SUCCESS) {
+          VkMemoryBarrier barrier = {};
+          barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+          barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+          barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+          dfn.vkCmdPipelineBarrier(new_cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &barrier, 0, nullptr,
+                                   0, nullptr);
+          if (dfn.vkEndCommandBuffer(new_cb) == VK_SUCCESS) {
+            cb = new_cb;
+            failed = false;
+            REXLOG_INFO("tt: fence-only submissions use a real command buffer");
+          }
+        }
+      }
+    }
+  }
+  VkSubmitInfo submit = {};
+  submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  if (cb != VK_NULL_HANDLE) {
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &cb;
+  }
+  return dfn.vkQueueSubmit(queue, cb != VK_NULL_HANDLE ? 1 : 0, cb != VK_NULL_HANDLE ? &submit : nullptr,
+                           fence);
+}
+
+"""
+    anchor = "bool VulkanPresenter::RefreshGuestOutputImpl(\n"
+    if s.count(anchor) != 1:
+        sys.exit("empty submit: anchor not found")
+    s = s.replace(anchor, helper + anchor)
+    reps = [
+        ("    if (dfn.vkQueueSubmit(queue_acquisition.queue(), 0, nullptr, fence_acqusition.fence()) !=\n",
+         "    if (TtSubmitSignal(vulkan_device_, queue_acquisition.queue(), fence_acqusition.fence()) !=\n"),
+        ("        if (dfn.vkQueueSubmit(queue_acquisition.queue(), 0, nullptr,\n"
+         "                              ui_fence_acquisition.fence()) != VK_SUCCESS) {\n",
+         "        if (TtSubmitSignal(vulkan_device_, queue_acquisition.queue(),\n"
+         "                           ui_fence_acquisition.fence()) != VK_SUCCESS) {\n"),
+    ]
+    for old, new in reps:
+        if s.count(old) != 1:
+            sys.exit("empty submit point not found: " + old.strip()[:60])
+        s = s.replace(old, new)
+    for inc in ("#include <cstdlib>", "#include <string_view>"):
+        if inc not in s:
+            s = s.replace("#include", inc + "\n#include", 1)
+    pp.write_text(s)
+    changed.append("presenter fence-only submits use a real command buffer")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).
