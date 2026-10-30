@@ -1607,6 +1607,111 @@ static VkResult TtSubmitSignal(const VulkanDevice* device, VkQueue queue, VkFenc
     pp.write_text(s)
     changed.append("presenter fence-only submits use a real command buffer")
 
+# ---- 30. v48: the empty-submit theory didn't hold. The timestamps only show part of the
+#          GPU's time: the marker (written at the very end of a submission) appears ~11 ms
+#          after the last timestamp, and only then does the next submission start, so the
+#          GPU is really busy ~26 ms per frame - while resolution, AA and binning make no
+#          difference. What doesn't scale with resolution: ~1000 pipeline barriers per frame,
+#          each of which drains and flushes the whole GPU on Adreno. Merge back-to-back
+#          barriers (nothing recorded between them) into one call; never merges two
+#          barriers touching the same image or buffer. TT_MERGE_BARRIERS=off disables.
+#          tt_fence_stats[12]: barrier calls saved by merging.
+t = dcb.read_text()
+if "tt-android: barrier merge" not in t:
+    merge = """
+// ---- tt-android: barrier merge (patch 30)
+}  // namespace rex::graphics::vulkan
+extern "C" uint64_t tt_fence_stats[16];
+namespace rex::graphics::vulkan {
+namespace tt_bmerge {
+bool enabled = [] {
+  const char* v = std::getenv("TT_MERGE_BARRIERS");
+  return !(v && std::string_view(v) == "off");
+}();
+bool pending = false;
+VkPipelineStageFlags src = 0, dst = 0;
+VkDependencyFlags deps = 0;
+std::vector<VkMemoryBarrier> mem;
+std::vector<VkBufferMemoryBarrier> buf;
+std::vector<VkImageMemoryBarrier> img;
+uint32_t calls = 0;
+
+void Flush(const ui::vulkan::VulkanDevice::Functions& dfn, VkCommandBuffer cb) {
+  if (!pending) return;
+  pending = false;
+  dfn.vkCmdPipelineBarrier(cb, src, dst, deps, uint32_t(mem.size()), mem.empty() ? nullptr : mem.data(),
+                           uint32_t(buf.size()), buf.empty() ? nullptr : buf.data(),
+                           uint32_t(img.size()), img.empty() ? nullptr : img.data());
+  if (calls > 1) __atomic_fetch_add(&tt_fence_stats[12], uint64_t(calls - 1), __ATOMIC_RELAXED);
+  calls = 0;
+  mem.clear(); buf.clear(); img.clear();
+}
+
+void Add(const ui::vulkan::VulkanDevice::Functions& dfn, VkCommandBuffer cb, VkPipelineStageFlags s,
+         VkPipelineStageFlags d, VkDependencyFlags f, uint32_t nm, const VkMemoryBarrier* m,
+         uint32_t nb, const VkBufferMemoryBarrier* b, uint32_t ni, const VkImageMemoryBarrier* im) {
+  if (!enabled) {
+    dfn.vkCmdPipelineBarrier(cb, s, d, f, nm, m, nb, b, ni, im);
+    return;
+  }
+  if (pending) {
+    bool clash = false;
+    for (uint32_t i = 0; i < ni && !clash; ++i)
+      for (const auto& e : img) if (e.image == im[i].image) { clash = true; break; }
+    for (uint32_t i = 0; i < nb && !clash; ++i)
+      for (const auto& e : buf) if (e.buffer == b[i].buffer) { clash = true; break; }
+    if (clash) Flush(dfn, cb);
+  }
+  if (!pending) { src = 0; dst = 0; deps = 0; }
+  pending = true;
+  src |= s; dst |= d; deps |= f;
+  mem.insert(mem.end(), m, m + nm);
+  buf.insert(buf.end(), b, b + nb);
+  img.insert(img.end(), im, im + ni);
+  ++calls;
+}
+}  // namespace tt_bmerge
+"""
+    anchor = "void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {\n"
+    if t.count(anchor) != 1:
+        sys.exit("barrier merge: Execute not found")
+    t = t.replace(anchor, merge.lstrip("\n") + "\n" + anchor)
+    reps = [
+        # flush before any other command
+        ("    const CommandHeader& header = *reinterpret_cast<const CommandHeader*>(stream);\n"
+         "    stream += kCommandHeaderSizeElements;\n"
+         "    stream_remaining -= kCommandHeaderSizeElements;\n",
+         "    const CommandHeader& header = *reinterpret_cast<const CommandHeader*>(stream);\n"
+         "    stream += kCommandHeaderSizeElements;\n"
+         "    stream_remaining -= kCommandHeaderSizeElements;\n"
+         "    if (header.command != Command::kVkPipelineBarrier) {\n"
+         "      tt_bmerge::Flush(dfn, command_buffer);  // tt-android: barrier merge\n"
+         "    }\n"),
+        ("        dfn.vkCmdPipelineBarrier(command_buffer, args.src_stage_mask, args.dst_stage_mask,\n"
+         "                                 args.dependency_flags, args.memory_barrier_count, memory_barriers,\n"
+         "                                 args.buffer_memory_barrier_count, buffer_memory_barriers,\n"
+         "                                 args.image_memory_barrier_count, image_memory_barriers);\n",
+         "        tt_bmerge::Add(dfn, command_buffer, args.src_stage_mask, args.dst_stage_mask,\n"
+         "                       args.dependency_flags, args.memory_barrier_count, memory_barriers,\n"
+         "                       args.buffer_memory_barrier_count, buffer_memory_barriers,\n"
+         "                       args.image_memory_barrier_count, image_memory_barriers);\n"),
+    ]
+    for old, new in reps:
+        if t.count(old) != 1:
+            sys.exit("barrier merge point not found: " + old.strip()[:60])
+        t = t.replace(old, new)
+    # flush at the end of Execute (the loop ends before the function's closing brace)
+    i = t.find(anchor)
+    j = t.find("\n}\n", i)
+    if j < 0:
+        sys.exit("barrier merge: end of Execute not found")
+    t = t[:j] + "\n  tt_bmerge::Flush(dfn, command_buffer);  // tt-android: barrier merge" + t[j:]
+    for inc in ("#include <vector>", "#include <string_view>", "#include <cstdlib>"):
+        if inc not in t:
+            t = t.replace("#include <cstddef>", "#include <cstddef>\n" + inc, 1)
+    dcb.write_text(t)
+    changed.append("merge back-to-back pipeline barriers")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).

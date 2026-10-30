@@ -771,6 +771,8 @@ void RunProfiler(std::string dir) {
                            (fence[7] - fence_prev[7]) / sw, (fence[6] - fence_prev[6]) / 1e6 / sw);
               std::fprintf(f, "  waits ended early by the fence check per frame: %.2f (fence queries %.2f ms)\n",
                            (fence[8] - fence_prev[8]) / sw, (fence[9] - fence_prev[9]) / 1e6 / sw);
+              std::fprintf(f, "  pipeline barrier calls saved by merging per frame: %.0f\n",
+                           (fence[12] - fence_prev[12]) / sw);
               std::fprintf(f, "  GPU kicks per frame: %.2f (submitting them %.2f ms)\n",
                            (fence[10] - fence_prev[10]) / sw, (fence[11] - fence_prev[11]) / 1e6 / sw);
               std::fprintf(f, "  command-processor submit queue-lock wait per frame: %.2f ms (%.1f submits)\n",
