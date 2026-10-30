@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <cstdio>
 #include <string_view>
 #if defined(__ANDROID__)
 #include <dlfcn.h>
@@ -42,6 +43,33 @@ extern "C" uint32_t TtGameMsaaOverride(uint32_t samples) {
 std::atomic<float> g_tt_game_fps{0.0f};
 std::atomic<float> g_tt_game_worst_ms{0.0f};
 
+// tt-android: frame-time statistics for the logs (read by the profiler via dlsym).
+// [0..4] frames that took <=18 ms (~60 FPS), <=24 (~45), <=35 (~30), <=55 (~20), longer
+// [5..9] microseconds spent in those frames   [10] spikes >= 80 ms   [11] total frames
+extern "C" __attribute__((visibility("default"))) uint64_t tt_frame_hist[16] = {};
+static std::chrono::steady_clock::time_point TtSessionStart() {
+  static const auto start = std::chrono::steady_clock::now();
+  return start;
+}
+static void TtSessionTime(char* out, size_t size) {
+  const long long s = std::chrono::duration_cast<std::chrono::seconds>(
+                          std::chrono::steady_clock::now() - TtSessionStart()).count();
+  std::snprintf(out, size, "%lld:%02lld", s / 60, s % 60);
+}
+static void TtRecordFrame(float frame_ms) {
+  TtSessionStart();
+  const int b = frame_ms <= 18.f ? 0 : frame_ms <= 24.f ? 1 : frame_ms <= 35.f ? 2 : frame_ms <= 55.f ? 3 : 4;
+  __atomic_fetch_add(&tt_frame_hist[b], 1, __ATOMIC_RELAXED);
+  __atomic_fetch_add(&tt_frame_hist[5 + b], uint64_t(frame_ms * 1000.f), __ATOMIC_RELAXED);
+  __atomic_fetch_add(&tt_frame_hist[11], 1, __ATOMIC_RELAXED);
+  if (frame_ms >= 80.f) {
+    __atomic_fetch_add(&tt_frame_hist[10], 1, __ATOMIC_RELAXED);
+    char when[16];
+    TtSessionTime(when, sizeof when);
+    REXLOG_INFO("tt: frame spike {:.0f} ms at {} into the session", frame_ms, when);
+  }
+}
+
 extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
   // Call original VdSwap to commit guest frame to GPU
   __imp__VdSwap(ctx, base);
@@ -58,6 +86,7 @@ extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
     float frame_ms = std::chrono::duration<float, std::milli>(now - previous).count();
     previous = now;
     if (frame_ms > worst_ms) worst_ms = frame_ms;
+    TtRecordFrame(frame_ms);
     ++frames;
 #if defined(__ANDROID__)
     // After ~5 s of real frames the GPU driver has clearly started fine: clear the
@@ -73,8 +102,18 @@ extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
     if (elapsed >= 2.0f) {
       g_tt_game_fps = frames / elapsed;
       g_tt_game_worst_ms = worst_ms;
-      REXLOG_INFO("GAME FPS: {:.1f} (avg {:.1f} ms, worst {:.1f} ms)", frames / elapsed,
-                  elapsed * 1000.0f / frames, worst_ms);
+      char when[16];
+      TtSessionTime(when, sizeof when);
+      const float window_fps = frames / elapsed;
+      REXLOG_INFO("GAME FPS: {:.1f} (avg {:.1f} ms, worst {:.1f} ms) [session {}]", window_fps,
+                  elapsed * 1000.0f / frames, worst_ms, when);
+      // Flag sudden drops (25% or more below the previous 2-second window).
+      static float previous_fps = 0.0f;
+      if (previous_fps > 0.0f && window_fps < previous_fps * 0.75f) {
+        REXLOG_INFO("tt: FPS drop {:.0f} -> {:.0f} at {} into the session", previous_fps,
+                    window_fps, when);
+      }
+      previous_fps = window_fps;
       frames = 0;
       worst_ms = 0.0f;
       window_start = now;

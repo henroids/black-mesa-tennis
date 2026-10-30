@@ -19,6 +19,7 @@
 #include <rex/logging.h>
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <cerrno>
@@ -712,6 +713,16 @@ void RunProfiler(std::string dir) {
                          (gpu[6] - gpu_prev[6]) / sw);
           }
           std::memcpy(gpu_prev, gpu, sizeof gpu_prev);
+        }
+        if (const uint64_t* hist = FindStats("tt_frame_hist")) {
+          const double total_ms = (hist[5] + hist[6] + hist[7] + hist[8] + hist[9]) / 1000.0;
+          auto pct = [&](int b) { return total_ms > 0 ? 100.0 * hist[5 + b] / 1000.0 / total_ms : 0.0; };
+          std::fprintf(f, "whole session, %llu frames over %.0f:%02.0f of game time: ~60 FPS %.0f%%, "
+                          "~45 %.0f%%, ~30 %.0f%%, ~20 %.0f%%, slower %.0f%% of the time; "
+                          "%llu spikes of 80 ms or more\n",
+                       static_cast<unsigned long long>(hist[11]), std::floor(total_ms / 60000.0),
+                       std::fmod(total_ms / 1000.0, 60.0), pct(0), pct(1), pct(2), pct(3), pct(4),
+                       static_cast<unsigned long long>(hist[10]));
         }
         std::fprintf(f, "\nbusy threads (CPU %% of one core, last second):\n");
         std::vector<std::pair<double, std::string>> rows;
