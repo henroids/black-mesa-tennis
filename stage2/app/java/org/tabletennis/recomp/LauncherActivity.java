@@ -97,7 +97,8 @@ public final class LauncherActivity extends Activity {
             showFps = new int[1], turnip = new int[1], driver = new int[1],
             shaderMode = new int[1], shaderThreads = new int[1], perfLog = new int[1],
             experiment = new int[1], dumpShaders = new int[1], fastWatch = new int[1],
-            occlusion = new int[1], pacing = new int[1], gameMsaa = new int[1];
+            occlusion = new int[1], pacing = new int[1], gameMsaa = new int[1],
+            queued = new int[1];
     private List<String> driverIds = new ArrayList<>();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -124,6 +125,7 @@ public final class LauncherActivity extends Activity {
         occlusion[0] = settings.occlusion;
         pacing[0] = settings.pacing;
         gameMsaa[0] = settings.gameMsaa;
+        queued[0] = settings.queued;
         experiment[0] = 0;  // experiments retired: the skin fix is built in now
         if (settings.experiment != 0) { settings.experiment = 0; settings.save(this); }
         loadDrivers();
@@ -199,6 +201,7 @@ public final class LauncherActivity extends Activity {
         });
         rows.add(new Choice("Fast memory watch", new String[]{"Off", "On"}, fastWatch, save));
         rows.add(new Choice("Game MSAA", Settings.GAME_MSAA_LABELS, gameMsaa, save));
+        rows.add(new Choice("Frames queued", Settings.QUEUED_LABELS, queued, save));
         rows.add(new Choice("Performance log", new String[]{"Off", "On"}, perfLog, save));
         rows.add(new Row("Export logs") {
             @Override void activate() { exportLogs(); }
@@ -223,6 +226,7 @@ public final class LauncherActivity extends Activity {
         settings.occlusion = 0;  // the game makes no occlusion queries; row retired
         settings.pacing = 0;  // pacing tests retired (no effect)
         settings.gameMsaa = gameMsaa[0];
+        settings.queued = queued[0];
         settings.save(this);
     }
 
