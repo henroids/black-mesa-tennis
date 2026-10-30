@@ -1466,6 +1466,62 @@ if "TtGpuTimingTail" not in t:
     cp.write_text(c)
     changed.append("GPU timing of the submission tail + barrier count")
 
+# ---- 28. v46: the submission tail is ~0 ms, yet once per frame the GPU sits ~14 ms with
+#          the next emulator submission already queued. Put every other use of the shared
+#          GPU queue on the timeline: sparse binds (10), guest-output refresh signal (11),
+#          UI paint submit (12) and paint done on the CPU (14), present (13).
+TL_RESOLVE = """
+// tt-android: timeline recorder (lives in the GPU plugin; looked up at run time)
+static void TtTl(uint32_t type, uint64_t a, uint64_t b) {
+  using Fn = void (*)(uint32_t, uint64_t, uint64_t);
+  static Fn fn = [] {
+    void* p = dlsym(RTLD_DEFAULT, "TtTimelineEvent");
+    if (!p) {
+      if (void* h = dlopen("librexgpu-xenos.so", RTLD_NOW | RTLD_NOLOAD)) p = dlsym(h, "TtTimelineEvent");
+    }
+    return reinterpret_cast<Fn>(p);
+  }();
+  if (fn) fn(type, a, b);
+}
+"""
+c = cp.read_text()
+if "TtTimelineEvent(10," not in c:
+    old = ("        bind_sparse_result =\n"
+           "            dfn.vkQueueBindSparse(queue_acquisition.queue(), 1, &bind_sparse_info, VK_NULL_HANDLE);\n")
+    if c.count(old) != 1:
+        sys.exit("timeline: sparse bind not found")
+    c = c.replace(old, old + "        TtTimelineEvent(10, GetCurrentSubmission(), sparse_memory_binds_.size());  // tt-android\n")
+    cp.write_text(c)
+    changed.append("timeline: sparse binds")
+pp = sdk / "src/ui/vulkan/vulkan_presenter.cpp"
+s = pp.read_text()
+if "TtTl(" not in s:
+    ns = s.find("\nnamespace")
+    if ns < 0:
+        sys.exit("timeline: presenter namespace not found")
+    s = s[:ns] + "\n" + TL_RESOLVE + s[ns:]
+    if "#include <dlfcn.h>" not in s:
+        s = s.replace("#include", "#include <dlfcn.h>\n#include", 1)
+    reps = [
+        ("    if (dfn.vkQueueSubmit(queue_acquisition.queue(), 0, nullptr, fence_acqusition.fence()) !=\n"
+         "        VK_SUCCESS) {\n      fence_acqusition.SubmissionSucceededSignalFailed();\n    }\n",
+         "    TtTl(11, 0, 0);  // tt-android: guest output refreshed\n"),
+        ("      submit_result =\n"
+         "          dfn.vkQueueSubmit(queue_acquisition.queue(), 1, &submit_info, fence_acqusition.fence());\n",
+         "      TtTl(12, 0, 0);  // tt-android: UI paint submitted\n"),
+        ("    paint_context_.submission_tracker.AwaitSubmissionCompletion(\n"
+         "        paint_context_.submission_tracker.GetCurrentSubmission() - 1);\n",
+         "    TtTl(14, 0, 0);  // tt-android: paint done (seen by the CPU)\n"),
+        ("    present_result = dfn.vkQueuePresentKHR(queue_acquisition.queue(), &present_info);\n",
+         "    TtTl(13, 0, 0);  // tt-android: presented\n"),
+    ]
+    for old, add in reps:
+        if s.count(old) != 1:
+            sys.exit("timeline presenter point not found: " + old.strip()[:60])
+        s = s.replace(old, old + add)
+    pp.write_text(s)
+    changed.append("timeline: presenter refresh / paint / present")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).

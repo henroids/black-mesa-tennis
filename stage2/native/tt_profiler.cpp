@@ -497,6 +497,11 @@ void DumpTimeline(const std::string& dir, double session) {
       case 8: std::fprintf(f, "%9.3f  cp wait ended by fence check for #%llu (query %.3f ms)\n", ms,
                            (unsigned long long)e.a, double(e.b) / 1e6); break;
       case 9: std::fprintf(f, "%9.3f  GPU kick (waiting for #%llu)\n", ms, (unsigned long long)e.a); break;
+      case 10: std::fprintf(f, "%9.3f  sparse bind (%llu pages)\n", ms, (unsigned long long)e.b); break;
+      case 11: std::fprintf(f, "%9.3f  presenter: guest output refreshed\n", ms); break;
+      case 12: std::fprintf(f, "%9.3f  presenter: UI paint submitted\n", ms); break;
+      case 13: std::fprintf(f, "%9.3f  presenter: presented\n", ms); break;
+      case 14: std::fprintf(f, "%9.3f  presenter: paint done (CPU saw it)\n", ms); break;
       case 7:
         std::fprintf(f, "%9.3f  SWAP\n", ms);
         if (last_swap) std::fprintf(f, "           (%.1f ms since previous swap)\n", double(e.t - last_swap) / 1e6);
