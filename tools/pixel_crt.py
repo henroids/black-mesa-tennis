@@ -6,11 +6,11 @@ the "pixels", like an old screen. Your originals are only read, never changed; t
 pixelated copies go into a separate folder with the same file names (as .png).
 
 Usage:
-    python3 pixel_crt.py <album folder> <output folder> [--cells 72] [--cell-size 20]
+    python3 pixel_crt.py <album folder> <output folder> [--cells 96] [--cell-size 15]
 
-  --cells      pixels across the short side of the picture (72 = the version you picked;
-               smaller = chunkier, larger = more detail)
-  --cell-size  size of each pixel in the output image, in real pixels (20 -> 1440 px
+  --cells      pixels across the short side of the picture (96 = the finer version you
+               picked; 72 = chunkier, larger = more detail)
+  --cell-size  size of each pixel in the output image, in real pixels (15 -> 1440 px
                on the short side)
   --grey       third tone between black and white: "dark" (default, dark grey),
                "light" (very light grey) or "none" (black and white only)
@@ -84,8 +84,8 @@ def main():
     ap = argparse.ArgumentParser(description="Pixel-grid CRT filter for a folder of photos")
     ap.add_argument("album", type=Path, help="folder with the original photos")
     ap.add_argument("output", type=Path, help="folder for the pixelated copies")
-    ap.add_argument("--cells", type=int, default=72)
-    ap.add_argument("--cell-size", type=int, default=20)
+    ap.add_argument("--cells", type=int, default=96)
+    ap.add_argument("--cell-size", type=int, default=15)
     ap.add_argument("--grey", choices=["none", "light", "dark"], default="dark",
                     help="third tone: dark grey (default), light grey, or none for black and white only")
     args = ap.parse_args()
