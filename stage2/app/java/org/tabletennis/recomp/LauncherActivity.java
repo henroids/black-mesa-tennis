@@ -481,14 +481,17 @@ public final class LauncherActivity extends Activity {
     }
 
     /** A new build may translate shaders differently; drop cached translations once per install. */
+    /** Bump only when a build changes how shaders are translated; any other update keeps the
+     *  compiled shader cache, so menus don't stutter again after every new build. */
+    private static final String SHADER_CACHE_VERSION = "tt-36";
+
     private void clearShaderCacheAfterUpdate() {
         try {
-            long installed = getPackageManager().getPackageInfo(getPackageName(), 0).lastUpdateTime;
             android.content.SharedPreferences p = getSharedPreferences("tt_install", MODE_PRIVATE);
-            if (p.getLong("cache_cleared_for", 0) == installed) return;
+            if (SHADER_CACHE_VERSION.equals(p.getString("shader_cache_version", ""))) return;
             DriverManager.deleteTree(new File(GameFiles.gameDir(this), "cache"));
             DriverManager.deleteTree(new File(GameFiles.baseDir(this), "xdg"));
-            p.edit().putLong("cache_cleared_for", installed).commit();
+            p.edit().putString("shader_cache_version", SHADER_CACHE_VERSION).commit();
         } catch (Exception ignored) { }
     }
 
