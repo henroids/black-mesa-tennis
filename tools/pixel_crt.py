@@ -12,8 +12,8 @@ Usage:
                smaller = chunkier, larger = more detail)
   --cell-size  size of each pixel in the output image, in real pixels (20 -> 1440 px
                on the short side)
-  --grey       add a third tone between black and white: "light" (very light grey) or
-               "dark" (dark grey); default is black and white only
+  --grey       third tone between black and white: "dark" (default, dark grey),
+               "light" (very light grey) or "none" (black and white only)
 """
 import argparse
 import sys
@@ -77,8 +77,8 @@ def main():
     ap.add_argument("output", type=Path, help="folder for the pixelated copies")
     ap.add_argument("--cells", type=int, default=72)
     ap.add_argument("--cell-size", type=int, default=20)
-    ap.add_argument("--grey", choices=["none", "light", "dark"], default="none",
-                    help="add a third tone: light grey or dark grey (default: black and white only)")
+    ap.add_argument("--grey", choices=["none", "light", "dark"], default="dark",
+                    help="third tone: dark grey (default), light grey, or none for black and white only")
     args = ap.parse_args()
 
     if not args.album.is_dir():
