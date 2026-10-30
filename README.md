@@ -45,7 +45,8 @@ If a stage fails, it says which log zip to look at (`~/tt-android/tt-stage1-logs
 | Fence status queries cost ~13 ms each on KGSL drivers (v29 measurement) | v30: GPU progress from a memory marker → ~36 FPS |
 | Presenter fence tracker hit the same slow query on every swap (v30 profile) | v31: young fences aren't queried (tracker cost ~0) |
 | GPU command thread painted the screen itself and waited for the display refresh every frame (v31 profile) | v32: present from the UI thread |
-| UI thread's present held the shared GPU queue ~15 ms; command thread waited ~22 ms/frame for it (v33) | v34: present without semaphores, paint awaited on the CPU |
+| UI thread's present held the shared GPU queue ~15 ms; command thread waited ~22 ms/frame for it (v33) | v34: present without semaphores (queue-lock wait → 0) |
+| Host side idle, game still ~33 FPS: suspect the game paces on the 60 Hz guest vblank interrupt | v35: test options for faster vblank interrupts |
 
 ## License
 

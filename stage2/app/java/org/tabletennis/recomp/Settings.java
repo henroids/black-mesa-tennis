@@ -15,8 +15,11 @@ final class Settings {
             "540p (performance, experimental)"};
     static final String[] AA_LABELS = {"Off", "FXAA", "FXAA (extreme)"};
     static final String[] AA_VALUES = {"none", "fxaa", "fxaa_extreme"};
-    static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped"};
-    static final int[] FPS_VALUES = {60, 30, 0};
+    static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped",
+            "60 FPS, 120 Hz vblank (test)", "60 FPS, 240 Hz vblank (test)"};
+    static final int[] FPS_VALUES = {60, 30, 0, 60, 60};
+    /** Guest vblank interrupt rate for the experimental frame-rate options, or null. */
+    String vblankHz() { return fps == 3 ? "120" : fps == 4 ? "240" : null; }
     static final String[] TURNIP_LABELS = {"Auto", "Sysmem (TU_DEBUG=sysmem)", "Sysmem + no binning"};
     static final String[] TURNIP_VALUES = {"", "sysmem", "sysmem,nobin"};
 

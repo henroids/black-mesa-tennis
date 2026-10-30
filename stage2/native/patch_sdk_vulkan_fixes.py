@@ -1149,6 +1149,31 @@ if "tt-android: present without semaphore" not in t:
     pp.write_text(t)
     changed.append("present without wait semaphores (paint awaited on the CPU)")
 
+# ---- 22. Guest vblank rate override (TT_VBLANK_HZ). With the host stalls gone (v34) the
+#          game still sits near 30-35 FPS while every thread has spare time; the game's
+#          frame pacing waits on the GPU interrupt that the vsync worker fires 60 times a
+#          second, so a frame that misses one vblank waits for the next. This lets that
+#          rate be raised as an experiment (the VdSwap limiter still caps presentation).
+p = sdk / "src/graphics/graphics_system.cpp"
+t = p.read_text()
+if "TT_VBLANK_HZ" not in t:
+    old = ("        uint64_t vsync_interval_ticks =\n"
+           "            std::max(uint64_t(1), uint64_t(double(guest_tick_frequency) / refresh_rate_hz));\n")
+    new = old + ("        if (const char* tt_hz = std::getenv(\"TT_VBLANK_HZ\")) {  // tt-android\n"
+                 "          const double hz = std::atof(tt_hz);\n"
+                 "          if (hz >= 30.0 && hz <= 1000.0) {\n"
+                 "            vsync_interval_ticks = std::max(uint64_t(1), uint64_t(double(guest_tick_frequency) / hz));\n"
+                 "            REXLOG_INFO(\"tt: guest vblank interrupts at {} Hz\", hz);\n"
+                 "          }\n"
+                 "        }\n")
+    if t.count(old) != 1:
+        sys.exit("vblank patch point not found")
+    t = t.replace(old, new)
+    if "#include <cstdlib>" not in t:
+        t = t.replace("#include", "#include <cstdlib>\n#include", 1)
+    p.write_text(t)
+    changed.append("guest vblank rate override (TT_VBLANK_HZ)")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()
