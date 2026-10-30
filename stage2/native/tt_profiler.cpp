@@ -496,6 +496,7 @@ void DumpTimeline(const std::string& dir, double session) {
                            e.b ? " (frame)" : ""); break;
       case 8: std::fprintf(f, "%9.3f  cp wait ended by fence check for #%llu (query %.3f ms)\n", ms,
                            (unsigned long long)e.a, double(e.b) / 1e6); break;
+      case 9: std::fprintf(f, "%9.3f  GPU kick (waiting for #%llu)\n", ms, (unsigned long long)e.a); break;
       case 7:
         std::fprintf(f, "%9.3f  SWAP\n", ms);
         if (last_swap) std::fprintf(f, "           (%.1f ms since previous swap)\n", double(e.t - last_swap) / 1e6);
@@ -763,6 +764,8 @@ void RunProfiler(std::string dir) {
                            (fence[7] - fence_prev[7]) / sw, (fence[6] - fence_prev[6]) / 1e6 / sw);
               std::fprintf(f, "  waits ended early by the fence check per frame: %.2f (fence queries %.2f ms)\n",
                            (fence[8] - fence_prev[8]) / sw, (fence[9] - fence_prev[9]) / 1e6 / sw);
+              std::fprintf(f, "  GPU kicks per frame: %.2f (submitting them %.2f ms)\n",
+                           (fence[10] - fence_prev[10]) / sw, (fence[11] - fence_prev[11]) / 1e6 / sw);
               std::fprintf(f, "  command-processor submit queue-lock wait per frame: %.2f ms (%.1f submits)\n",
                            (fence[4] - fence_prev[4]) / 1e6 / sw, (fence[5] - fence_prev[5]) / sw);
               std::memcpy(fence_prev, fence, sizeof fence_prev);

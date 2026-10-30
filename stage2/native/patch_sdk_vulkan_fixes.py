@@ -1338,6 +1338,97 @@ if "tt-android: fence check in marker wait" not in c:
     cp.write_text(c)
     changed.append("marker wait also checks the submission fence")
 
+# ---- 26. v42 logs: the fence check ends every wait, but the driver's fence query itself
+#          blocks ~17 ms - the driver, like the marker, only learns that the GPU finished
+#          when something else reaches the GPU (the 60 Hz guest-output refresh). So when a
+#          wait starts and the marker isn't there yet, give the GPU a tiny extra submission
+#          (one 4-byte fill) to push the pending completion through. The fence query now
+#          only starts after 3 ms, as a fallback. TT_GPU_KICK=off disables the kick.
+#          Timeline: event 9 = kick submitted. tt_fence_stats[10] kicks, [11] kick ns.
+c = cp.read_text()
+if "tt-android: GPU kick" not in c:
+    helper_anchor = "// Highest submission the GPU has fully finished, as far as the marker says.\n"
+    kick = """// tt-android: GPU kick (patch 26) - a tiny prerecorded submission that writes to the
+// marker buffer's spare area, used to make pending GPU completions visible.
+bool kick_enabled = [] {
+  const char* v = std::getenv("TT_GPU_KICK");
+  return !(v && std::string_view(v) == "off");
+}();
+VkCommandPool kick_pool = VK_NULL_HANDLE;
+VkCommandBuffer kick_cb = VK_NULL_HANDLE;
+bool kick_failed = false;
+
+bool Kick(const VulkanCommandProcessor& cp) {
+  if (!kick_enabled || kick_failed || !mapped) return false;
+  const ui::vulkan::VulkanDevice* device = cp.GetVulkanDevice();
+  const auto& dfn = device->functions();
+  if (kick_cb == VK_NULL_HANDLE) {
+    kick_failed = true;
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = device->queue_family_graphics_compute();
+    if (dfn.vkCreateCommandPool(device->device(), &pool_info, nullptr, &kick_pool) != VK_SUCCESS) {
+      return false;
+    }
+    VkCommandBufferAllocateInfo alloc = {};
+    alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc.commandPool = kick_pool;
+    alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc.commandBufferCount = 1;
+    if (dfn.vkAllocateCommandBuffers(device->device(), &alloc, &kick_cb) != VK_SUCCESS) {
+      kick_cb = VK_NULL_HANDLE;
+      return false;
+    }
+    VkCommandBufferBeginInfo begin = {};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+    if (dfn.vkBeginCommandBuffer(kick_cb, &begin) != VK_SUCCESS) {
+      kick_cb = VK_NULL_HANDLE;
+      return false;
+    }
+    fill(kick_cb, buffer, 64, 4, 0x4B49434Bu);
+    if (dfn.vkEndCommandBuffer(kick_cb) != VK_SUCCESS) {
+      kick_cb = VK_NULL_HANDLE;
+      return false;
+    }
+    kick_failed = false;
+    REXLOG_INFO("tt: GPU kick ready");
+  }
+  VkSubmitInfo submit = {};
+  submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit.commandBufferCount = 1;
+  submit.pCommandBuffers = &kick_cb;
+  ui::vulkan::VulkanDevice::Queue::Acquisition queue =
+      device->AcquireQueue(device->queue_family_graphics_compute(), 0);
+  return dfn.vkQueueSubmit(queue.queue(), 1, &submit, VK_NULL_HANDLE) == VK_SUCCESS;
+}
+
+"""
+    if c.count(helper_anchor) != 1:
+        sys.exit("kick: marker helper anchor not found")
+    c = c.replace(helper_anchor, kick + helper_anchor)
+    old = ("      auto tt_next_check = std::chrono::steady_clock::now();\n")
+    new = ("      // tt-android: GPU kick (patch 26)\n"
+           "      {\n"
+           "        const auto tt_k0 = std::chrono::steady_clock::now();\n"
+           "        if (tt_marker::Kick(*this)) {\n"
+           "          __atomic_fetch_add(&tt_fence_stats[10], 1, __ATOMIC_RELAXED);\n"
+           "          __atomic_fetch_add(&tt_fence_stats[11], uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(\n"
+           "              std::chrono::steady_clock::now() - tt_k0).count()), __ATOMIC_RELAXED);\n"
+           "          TtTimelineEvent(9, await_submission, 0);\n"
+           "        }\n"
+           "      }\n"
+           "      auto tt_next_check = std::chrono::steady_clock::now() + std::chrono::milliseconds(3);\n")
+    if c.count(old) != 1:
+        sys.exit("kick: wait start not found (needs 25)")
+    c = c.replace(old, new)
+    old = "          tt_next_check = std::chrono::steady_clock::now() + std::chrono::microseconds(500);\n"
+    if c.count(old) != 1:
+        sys.exit("kick: fence check interval not found")
+    c = c.replace(old, "          tt_next_check = std::chrono::steady_clock::now() + std::chrono::milliseconds(2);\n")
+    cp.write_text(c)
+    changed.append("GPU kick while waiting for the marker")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).
