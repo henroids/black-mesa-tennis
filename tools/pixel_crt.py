@@ -12,6 +12,8 @@ Usage:
                smaller = chunkier, larger = more detail)
   --cell-size  size of each pixel in the output image, in real pixels (20 -> 1440 px
                on the short side)
+  --grey       add a third tone between black and white: "light" (very light grey) or
+               "dark" (dark grey); default is black and white only
 """
 import argparse
 import sys
@@ -28,9 +30,10 @@ except ImportError:
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif"}
 GRID_COLOR = (38, 38, 38)
+GREYS = {"none": None, "light": 200, "dark": 96}
 
 
-def pixelate(path, cells, cell_size):
+def pixelate(path, cells, cell_size, grey=None):
     im = ImageOps.exif_transpose(Image.open(path)).convert("L")  # respect phone rotation
     w, h = im.size
     if w <= h:
@@ -44,10 +47,18 @@ def pixelate(path, cells, cell_size):
     g = g.filter(ImageFilter.UnsharpMask(6, 150))
     small = np.asarray(g.resize((cols, rows), Image.BOX), dtype=np.float32) / 255.0
 
-    # Light checkerboard dither in the mid-tones only; darks and lights stay solid.
     bayer = np.array([[0, 2], [3, 1]], dtype=np.float32) / 4.0 + 0.125
-    threshold = 0.35 + 0.30 * np.tile(bayer, (rows // 2 + 1, cols // 2 + 1))[:rows, :cols]
-    bw = np.where(small > threshold, 255, 0).astype(np.uint8)
+    pattern = np.tile(bayer, (rows // 2 + 1, cols // 2 + 1))[:rows, :cols]
+    if grey is None:
+        # Two tones: light checkerboard dither in the mid-tones; darks and lights stay solid.
+        threshold = 0.35 + 0.30 * pattern
+        bw = np.where(small > threshold, 255, 0).astype(np.uint8)
+    else:
+        # Three tones: black, one grey, white. The mid-tones become solid grey (easier to
+        # read than a checkerboard), with a light dither only right at the edges between tones.
+        low = 0.30 + 0.08 * (pattern - 0.5)
+        high = 0.66 + 0.08 * (pattern - 0.5)
+        bw = np.where(small > high, 255, np.where(small > low, grey, 0)).astype(np.uint8)
 
     big = Image.fromarray(bw).convert("RGB").resize((cols * cell_size, rows * cell_size),
                                                     Image.NEAREST)
@@ -66,6 +77,8 @@ def main():
     ap.add_argument("output", type=Path, help="folder for the pixelated copies")
     ap.add_argument("--cells", type=int, default=72)
     ap.add_argument("--cell-size", type=int, default=20)
+    ap.add_argument("--grey", choices=["none", "light", "dark"], default="none",
+                    help="add a third tone: light grey or dark grey (default: black and white only)")
     args = ap.parse_args()
 
     if not args.album.is_dir():
@@ -81,7 +94,7 @@ def main():
     for i, photo in enumerate(photos, 1):
         target = args.output / (photo.stem + ".png")
         try:
-            pixelate(photo, args.cells, args.cell_size).save(target)
+            pixelate(photo, args.cells, args.cell_size, GREYS[args.grey]).save(target)
             done += 1
             print(f"[{i}/{len(photos)}] {photo.name} -> {target.name}")
         except Exception as e:  # keep going if one file is unreadable
