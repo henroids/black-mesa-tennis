@@ -494,6 +494,8 @@ void DumpTimeline(const std::string& dir, double session) {
                            (unsigned long long)e.a, (unsigned long long)e.b); break;
       case 6: std::fprintf(f, "%9.3f  end sub     #%llu%s\n", ms, (unsigned long long)e.a,
                            e.b ? " (frame)" : ""); break;
+      case 8: std::fprintf(f, "%9.3f  cp wait ended by fence check for #%llu (query %.3f ms)\n", ms,
+                           (unsigned long long)e.a, double(e.b) / 1e6); break;
       case 7:
         std::fprintf(f, "%9.3f  SWAP\n", ms);
         if (last_swap) std::fprintf(f, "           (%.1f ms since previous swap)\n", double(e.t - last_swap) / 1e6);
@@ -568,7 +570,7 @@ void RunProfiler(std::string dir) {
   uint64_t frame_prev[8] = {};
   double window_swaps = 1.0;  // guest swaps in the current report window
   const uint64_t* fence = nullptr;
-  uint64_t fence_prev[8] = {};
+  uint64_t fence_prev[16] = {};
   const uint64_t* tracker = nullptr;
   uint64_t tracker_prev[8] = {};
   const uint64_t* work = nullptr;
@@ -759,6 +761,8 @@ void RunProfiler(std::string dir) {
                            (fence[1] - fence_prev[1]) / 1e6 / sw, (fence[2] - fence_prev[2]) / 1e6 / sw);
               std::fprintf(f, "  GPU-marker waits per frame: %.1f waits, %.2f ms\n",
                            (fence[7] - fence_prev[7]) / sw, (fence[6] - fence_prev[6]) / 1e6 / sw);
+              std::fprintf(f, "  waits ended early by the fence check per frame: %.2f (fence queries %.2f ms)\n",
+                           (fence[8] - fence_prev[8]) / sw, (fence[9] - fence_prev[9]) / 1e6 / sw);
               std::fprintf(f, "  command-processor submit queue-lock wait per frame: %.2f ms (%.1f submits)\n",
                            (fence[4] - fence_prev[4]) / 1e6 / sw, (fence[5] - fence_prev[5]) / sw);
               std::memcpy(fence_prev, fence, sizeof fence_prev);

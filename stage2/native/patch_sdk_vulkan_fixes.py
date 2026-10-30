@@ -823,7 +823,7 @@ if "tt_fence_stats" not in c:
         c = c.replace(old, new)
     ns = c.find("\nnamespace")
     c = (c[:ns] + "\n// tt-android: [0] GPU progress poll ns [1] cache updates ns [2] destruction ns [3] calls\n"
-         "extern \"C\" __attribute__((visibility(\"default\"))) uint64_t tt_fence_stats[8] = {};\n" + c[ns:])
+         "extern \"C\" __attribute__((visibility(\"default\"))) uint64_t tt_fence_stats[16] = {};\n" + c[ns:])
     p.write_text(c)
     changed.append("fence-check segment timers")
 
@@ -1284,6 +1284,59 @@ extern "C" __attribute__((visibility("default"))) void TtTimelineEvent(uint32_t 
     c = (c[:ns] + '\nextern "C" void TtTimelineEvent(uint32_t type, uint64_t a, uint64_t b);\n' + c[ns:])
     cp.write_text(c)
     changed.append("frame timeline events")
+
+# ---- 25. v41 timeline: every frame the command processor waits ~17 ms for a submission
+#          the GPU had finished ~50-70 ms earlier. The marker value only becomes visible
+#          to the CPU when some later submission flushes the GPU caches (the 60 Hz guest
+#          output refresh), so the wait lasts until the next refresh. Fix: while waiting,
+#          also ask the driver whether that submission's fence is signalled (cheap when it
+#          is, which is nearly always). Checked at once, then every 0.5 ms.
+#          TT_FENCE_CHECK=off restores marker-only waiting.
+#          Timeline: event 8 = wait ended by the fence (b = ns that fence query took),
+#          tt_fence_stats[8] fence-ended waits, [9] ns in those fence queries.
+c = cp.read_text()
+if "tt-android: fence check in marker wait" not in c:
+    old = ("      while (await_submission > tt_done && std::chrono::steady_clock::now() < tt_deadline) {\n"
+           "        std::this_thread::sleep_for(std::chrono::microseconds(50));\n"
+           "        tt_done = tt_marker::Done(*this, submission_completed_);\n"
+           "      }\n")
+    new = ("      // tt-android: fence check in marker wait (patch 25)\n"
+           "      static const bool tt_fence_check = [] {\n"
+           "        const char* v = std::getenv(\"TT_FENCE_CHECK\");\n"
+           "        return !(v && std::string_view(v) == \"off\");\n"
+           "      }();\n"
+           "      auto tt_next_check = std::chrono::steady_clock::now();\n"
+           "      while (await_submission > tt_done && std::chrono::steady_clock::now() < tt_deadline) {\n"
+           "        if (tt_fence_check && std::chrono::steady_clock::now() >= tt_next_check &&\n"
+           "            await_submission > submission_completed_) {\n"
+           "          const size_t tt_i = size_t(await_submission - submission_completed_ - 1);\n"
+           "          if (tt_i < submissions_in_flight_fences_.size()) {\n"
+           "            const auto tt_q0 = std::chrono::steady_clock::now();\n"
+           "            const VkResult tt_st = dfn.vkGetFenceStatus(device, submissions_in_flight_fences_[tt_i]);\n"
+           "            const uint64_t tt_q_ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(\n"
+           "                std::chrono::steady_clock::now() - tt_q0).count());\n"
+           "            __atomic_fetch_add(&tt_fence_stats[9], tt_q_ns, __ATOMIC_RELAXED);\n"
+           "            if (tt_st == VK_SUCCESS) {\n"
+           "              // Submissions complete in order: everything up to this one is done.\n"
+           "              __atomic_fetch_add(&tt_fence_stats[8], 1, __ATOMIC_RELAXED);\n"
+           "              TtTimelineEvent(8, await_submission, tt_q_ns);\n"
+           "              tt_done = await_submission;\n"
+           "              break;\n"
+           "            }\n"
+           "          }\n"
+           "          tt_next_check = std::chrono::steady_clock::now() + std::chrono::microseconds(500);\n"
+           "        }\n"
+           "        std::this_thread::sleep_for(std::chrono::microseconds(50));\n"
+           "        tt_done = std::max(tt_done, tt_marker::Done(*this, submission_completed_));\n"
+           "      }\n")
+    if c.count(old) != 1:
+        sys.exit("fence check: marker wait loop not found")
+    c = c.replace(old, new)
+    for inc in ("#include <algorithm>", "#include <string_view>", "#include <cstdlib>"):
+        if inc not in c:
+            c = c.replace("#include", inc + "\n#include", 1)
+    cp.write_text(c)
+    changed.append("marker wait also checks the submission fence")
 
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
