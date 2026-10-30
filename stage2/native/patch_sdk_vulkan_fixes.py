@@ -967,6 +967,87 @@ uint64_t Done(const VulkanCommandProcessor& cp, uint64_t completed) {
     p.write_text(c)
     changed.append("GPU progress read from a memory marker (no fence queries)")
 
+# ---- 19. Presenter/guest-output submission tracker: don't query fences that are almost
+#          certainly still pending. v30 profile: 65% of the command processor thread was
+#          in vkGetFenceStatus via VulkanSubmissionTracker::UpdateAndGetCompletedSubmission
+#          (from RefreshGuestOutput on every swap). On KGSL a status query on a fence that
+#          hasn't signalled yet sits in the kernel for ~13 ms. Fences younger than
+#          TT_FENCE_MIN_AGE_MS (default 100; 0 = upstream) are treated as pending without
+#          asking the driver. Real blocking waits are unchanged.
+#          tt_tracker_stats: [0] status query ns [1] blocking wait ns [2] queries [3] waits
+p = sdk / "src/ui/vulkan/vulkan_submission_tracker.cpp"
+t = p.read_text()
+if "tt_tracker_stats" not in t:
+    helper = """
+// tt-android: fence age gate (see patch notes)
+extern "C" __attribute__((visibility("default"))) uint64_t tt_tracker_stats[8] = {};
+namespace {
+std::mutex tt_fence_mutex;
+std::unordered_map<VkFence, int64_t> tt_fence_submit_ns;
+int64_t TtNowNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+void TtStampFence(VkFence fence) {
+  std::lock_guard<std::mutex> lock(tt_fence_mutex);
+  tt_fence_submit_ns[fence] = TtNowNs();
+}
+bool TtFenceTooYoung(VkFence fence) {
+  static const int64_t min_age_ns = [] {
+    const char* v = std::getenv("TT_FENCE_MIN_AGE_MS");
+    return int64_t(v ? std::atoi(v) : 100) * 1000000;
+  }();
+  if (min_age_ns <= 0) return false;
+  std::lock_guard<std::mutex> lock(tt_fence_mutex);
+  auto it = tt_fence_submit_ns.find(fence);
+  return it != tt_fence_submit_ns.end() && TtNowNs() - it->second < min_age_ns;
+}
+VkResult TtTimedStatus(const rex::ui::vulkan::VulkanDevice::Functions& dfn, VkDevice device,
+                       VkFence fence) {
+  const int64_t t0 = TtNowNs();
+  const VkResult r = dfn.vkGetFenceStatus(device, fence);
+  __atomic_fetch_add(&tt_tracker_stats[0], uint64_t(TtNowNs() - t0), __ATOMIC_RELAXED);
+  __atomic_fetch_add(&tt_tracker_stats[2], 1, __ATOMIC_RELAXED);
+  return r;
+}
+}  // namespace
+"""
+    anchor = "namespace rex {\nnamespace ui {\nnamespace vulkan {\n"
+    if t.count(anchor) != 1:
+        sys.exit("tracker namespace anchor not found")
+    t = t.replace(anchor, anchor + helper, 1)
+    for inc in ("#include <chrono>", "#include <cstdlib>", "#include <mutex>", "#include <unordered_map>"):
+        if inc not in t:
+            t = t.replace("#include <cstdint>", "#include <cstdint>\n" + inc, 1)
+    reps = [
+        ("      submission_tracker_->fences_pending_.emplace_back(submission_tracker_->submission_current_,\n"
+         "                                                        fence_);\n",
+         "      submission_tracker_->fences_pending_.emplace_back(submission_tracker_->submission_current_,\n"
+         "                                                        fence_);\n"
+         "      TtStampFence(fence_);  // tt-android\n"),
+        ("      if (dfn.vkGetFenceStatus(device, pending_pair.second) != VK_SUCCESS) {\n        break;\n      }\n",
+         "      if (TtFenceTooYoung(pending_pair.second) ||  // tt-android\n"
+         "          TtTimedStatus(dfn, device, pending_pair.second) != VK_SUCCESS) {\n        break;\n      }\n"),
+        ("        if (dfn.vkWaitForFences(device, 1, &pending_pair.second, VK_TRUE, UINT64_MAX) ==\n"
+         "            VK_SUCCESS) {\n          break;\n        }\n",
+         "        const int64_t tt_w0 = TtNowNs();  // tt-android\n"
+         "        const VkResult tt_wr =\n"
+         "            dfn.vkWaitForFences(device, 1, &pending_pair.second, VK_TRUE, UINT64_MAX);\n"
+         "        __atomic_fetch_add(&tt_tracker_stats[1], uint64_t(TtNowNs() - tt_w0), __ATOMIC_RELAXED);\n"
+         "        __atomic_fetch_add(&tt_tracker_stats[3], 1, __ATOMIC_RELAXED);\n"
+         "        if (tt_wr == VK_SUCCESS) {\n          break;\n        }\n"),
+        ("      if (dfn.vkGetFenceStatus(device, pending_pair.second) == VK_SUCCESS) {\n        break;\n      }\n",
+         "      if (!TtFenceTooYoung(pending_pair.second) &&  // tt-android\n"
+         "          TtTimedStatus(dfn, device, pending_pair.second) == VK_SUCCESS) {\n        break;\n      }\n"),
+    ]
+    for old, new in reps:
+        if t.count(old) != 1:
+            sys.exit("tracker patch point not found: " + old.strip()[:60])
+        t = t.replace(old, new)
+    p.write_text(t)
+    changed.append("submission tracker skips status queries on young fences")
+
 # repair: the first v20 script declared tt_work_stats twice in command_processor.cpp
 f = sdk / "src/graphics/vulkan/command_processor.cpp"
 t = f.read_text()

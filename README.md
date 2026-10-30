@@ -42,7 +42,8 @@ If a stage fails, it says which log zip to look at (`~/tt-android/tt-stage1-logs
 | Texture exponent bias from fetch word 3 (#456) | skin/textures render correctly |
 | Audio worker multi-wait no longer busy-spins | frees a full CPU core |
 | Game MSAA off → one EDRAM tile instead of 2–3 | 20 → ~29 FPS |
-| Fence status queries cost ~13 ms each on KGSL drivers (v29 measurement) | v30: GPU progress read from a memory marker instead |
+| Fence status queries cost ~13 ms each on KGSL drivers (v29 measurement) | v30: GPU progress from a memory marker → ~36 FPS |
+| Presenter fence tracker hit the same slow query on every swap (v30 profile) | v31: young fences aren't queried |
 
 ## License
 

@@ -511,6 +511,8 @@ void RunProfiler(std::string dir) {
   double window_swaps = 1.0;  // guest swaps in the current report window
   const uint64_t* fence = nullptr;
   uint64_t fence_prev[4] = {};
+  const uint64_t* tracker = nullptr;
+  uint64_t tracker_prev[4] = {};
   const uint64_t* work = nullptr;
   uint64_t work_prev[8] = {};
   const uint64_t* gtime = nullptr;
@@ -674,6 +676,14 @@ void RunProfiler(std::string dir) {
           std::fprintf(f, "  occlusion queries   %7.1f/s\n", (gpu[15] - gpu_prev[15]) / stat_secs);
           {
             const double sw = window_swaps;
+            if (!tracker) tracker = FindStats("tt_tracker_stats");
+            if (tracker) {
+              std::fprintf(f, "  presenter fence tracker per frame: %.1f status queries (%.2f ms), "
+                              "%.1f blocking waits (%.2f ms)\n",
+                           (tracker[2] - tracker_prev[2]) / sw, (tracker[0] - tracker_prev[0]) / 1e6 / sw,
+                           (tracker[3] - tracker_prev[3]) / sw, (tracker[1] - tracker_prev[1]) / 1e6 / sw);
+              std::memcpy(tracker_prev, tracker, sizeof tracker_prev);
+            }
             if (!fence) fence = FindStats("tt_fence_stats");
             if (fence) {
               std::fprintf(f, "  fence check per frame (%.1f calls): GPU progress poll %.2f ms, "
