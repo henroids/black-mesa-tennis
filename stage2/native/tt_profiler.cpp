@@ -659,6 +659,9 @@ void RunProfiler(std::string dir) {
         }
         {
           const char* fif = std::getenv("TT_FRAMES_IN_FLIGHT");
+          if (const char* described = std::getenv("TT_SETTINGS")) {
+            std::fprintf(f, "session settings: %s\n", described);
+          }
           std::fprintf(f, "settings: frames in flight %s, UI cap %s\n", fif ? fif : "3 (default)",
                        std::getenv("TT_UI_UNCAPPED") ? "off" : "60 Hz");
         }

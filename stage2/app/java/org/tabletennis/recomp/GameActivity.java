@@ -38,6 +38,21 @@ public final class GameActivity extends SDLActivity {
             setEnv("TT_PROFILE", logs.getAbsolutePath());
             copySymbolLists(new File(logs, "syms"));
         }
+        // Record this session's settings (plain words + environment) so exported logs say
+        // exactly what each run used.
+        String described = settings.describe(DriverManager.selected(this));
+        Log.i(TAG, "Session settings: " + described);
+        setEnv("TT_SETTINGS", described);
+        File sessionLog = new File(GameFiles.logsDir(this), "sessions.txt");
+        try {
+            GameFiles.logsDir(this).mkdirs();
+            try (java.io.FileWriter w = new java.io.FileWriter(sessionLog, true)) {
+                w.write(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.ROOT)
+                        .format(new java.util.Date()) + "  " + described + "\n");
+            }
+        } catch (java.io.IOException e) {
+            Log.w(TAG, "could not write sessions.txt", e);
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         super.onCreate(savedInstanceState);
         if (settings.perfLog) {

@@ -26,6 +26,9 @@
 #include <imgui.h>
 
 #include <cstring>
+#if defined(__ANDROID__) || defined(__linux__)
+#include <unistd.h>
+#endif
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -271,6 +274,17 @@ class TabletennisApp : public rex::ReXApp {
   }
 
   void OnPreSetup(rex::RuntimeConfig& config) override {
+#if defined(__ANDROID__) || defined(__linux__)
+    // Record the launcher's settings and every TT_* switch in the game log.
+    if (const char* described = std::getenv("TT_SETTINGS")) {
+      REXLOG_INFO("tt: session settings: {}", described);
+    }
+    for (char** env = environ; env && *env; ++env) {
+      if (std::strncmp(*env, "TT_", 3) == 0 && std::strncmp(*env, "TT_SETTINGS=", 12) != 0) {
+        REXLOG_INFO("tt: env {}", *env);
+      }
+    }
+#endif
     rex::cvar::SetFlagByName("protect_zero", "false");
     if (!std::getenv("TT_STRICT_FETCH")) rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
     if (config.gpu_plugin.empty()) {

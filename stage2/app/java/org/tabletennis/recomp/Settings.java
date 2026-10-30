@@ -114,6 +114,21 @@ final class Settings {
 
     String turnipDebug() { return TURNIP_VALUES[turnipMode]; }
 
+    /** Every start-screen setting in plain words, for the logs. */
+    String describe(String driver) {
+        return "Resolution: " + RESOLUTION_LABELS[resolution]
+                + " | Anti-aliasing: " + AA_LABELS[aa]
+                + " | Frame rate: " + FPS_LABELS[fps]
+                + " | Show FPS: " + (showFps ? "On" : "Off")
+                + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
+                + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
+                + " | GPU driver: " + driver
+                + " | Turnip mode: " + TURNIP_LABELS[turnipMode]
+                + " | Game MSAA: " + GAME_MSAA_LABELS[gameMsaa]
+                + " | Fast memory watch: " + (fastWatch ? "On" : "Off")
+                + " | Performance log: " + (perfLog ? "On" : "Off");
+    }
+
     /** Command-line cvars for the native runtime. */
     List<String> toArguments(String isoPath) {
         List<String> args = new ArrayList<>();
