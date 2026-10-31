@@ -15,11 +15,12 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F7        presenter's submission tracker doesn't query very young fences (KGSL ~13 ms)
   F8        presenter: swapchain acquire waited on the CPU, present without semaphores
   F9        skip re-converting textures whose guest bytes didn't change          ~+1 FPS
+  F10       skip two depth-only passes with no visible effect (640/1120 wide)     ~+2 FPS
 
 DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D1  tt_frame_stats  [0] guest vblanks [1] CP wait-for-memory sleeps [2] their ns [3] swaps
   D2  tt_work_stats   [0] draws [1] resolves [2] texture loads [3] texture bytes
-                      [6] upload calls [7] upload bytes [8] draws skipped by a test
+                      [6] upload calls [7] upload bytes [8] draws skipped by F10
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
 """
@@ -440,6 +441,24 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
               "#include <unordered_set>", "#include <rex/hash.h>"))
 done.append("F9 unchanged textures aren't re-converted")
 
+# ---- F10 Two depth-only passes the game draws every frame into depth buffers 640 and 1120
+#      pixels wide (~37 + ~57 draws) have no visible effect in rallies (v58-v60 screenshots
+#      matched; the real table/player shadows are drawn elsewhere). Skipping them: ~+2 FPS
+#      (40.6 -> 42.8). Skipped draws are counted in tt_work_stats[8].
+edit(CP, (
+    "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n",
+    "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n"
+    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
+    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                     : 0)) {  // tt-android F10: unused depth-only passes\n"
+    "    const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
+    "    if (pitch == 640 || pitch == 1120) {\n"
+    "      __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
+    "      return true;\n"
+    "    }\n"
+    "  }\n"))
+done.append("F10 unused depth-only passes (640/1120) skipped")
+
 # ====================================================================== DIAGNOSTICS
 
 # ---- D1 frame pacing: guest vblanks, command-processor WAIT_REG_MEM sleeps, swaps
@@ -493,49 +512,5 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
-
-# ========================================================= TEMPORARY TEST ROUND (v60)
-# Remove this whole section once the round's results are in (HANDOFF: clean up as you go).
-
-# ---- T1 Depth-only passes. v57 "No shadows" (skip every depth-only draw into a depth buffer
-#      whose pitch isn't the 1280-pixel screen's) gave ~+2.5 FPS, but the visible shadows
-#      stayed, so it removed other passes: pitches 1440, 640 and 1120 were skipped. Now each
-#      pitch can be skipped on its own (TT_TEST=skip<pitch>), and depth-only draws are counted
-#      per pitch (tt_depth_pitch: 8 x {pitch, draws}) so the profile shows how heavy each is.
-edit(CP, (
-    "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n",
-    "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n"
-    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
-    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
-    "                     : 0)) {  // tt-android T1: depth-only draw\n"
-    "    // TT_TEST=skip<pitch>[,<pitch>...]\n"
-    "    static const std::vector<uint32_t> tt_skip_pitches = [] {\n"
-    "      std::vector<uint32_t> list;\n"
-    "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      if (v && std::strncmp(v, \"skip\", 4) == 0) {\n"
-    "        for (const char* p = v + 4; *p;) {\n"
-    "          list.push_back(uint32_t(std::strtoul(p, const_cast<char**>(&p), 10)));\n"
-    "          if (*p == ',') ++p; else break;\n"
-    "        }\n"
-    "      }\n"
-    "      return list;\n"
-    "    }();\n"
-    "    const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
-    "    for (int i = 0; i < 8; ++i) {\n"
-    "      uint64_t& slot = tt_depth_pitch[i * 2];\n"
-    "      if (slot == 0) slot = pitch;\n"
-    "      if (slot == pitch) {\n"
-    "        __atomic_fetch_add(&tt_depth_pitch[i * 2 + 1], 1, __ATOMIC_RELAXED);\n"
-    "        break;\n"
-    "      }\n"
-    "    }\n"
-    "    if (std::find(tt_skip_pitches.begin(), tt_skip_pitches.end(), pitch) != tt_skip_pitches.end()) {\n"
-    "      __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
-    "      return true;\n"
-    "    }\n"
-    "  }\n"),
-    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_depth_pitch[16] = {};  // T1\n',
-    includes=("#include <algorithm>", "#include <cstdlib>", "#include <cstring>", "#include <vector>"))
-done.append("T1 test: depth-only draws counted per pitch; TT_TEST=skip<pitch>")
 
 print("\n".join(done))

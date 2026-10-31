@@ -16,9 +16,6 @@ final class Settings {
     static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped"};
     static final int[] FPS_VALUES = {60, 30, 0};
     static final int[] SHADER_THREAD_VALUES = {2, 4, 6};
-    // TEMPORARY test round (v60): one option per run; remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "Skip depth passes 640 + 1120"};
-    int test = 0;
 
     private static final String PREFS = "tt_settings";
 
@@ -40,7 +37,6 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v60", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -53,7 +49,6 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v60", test)
                 .commit();
     }
 
@@ -66,7 +61,6 @@ final class Settings {
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
                 + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
                 + " | GPU driver: " + driver
-                + " | Test: " + TEST_LABELS[test]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }
 

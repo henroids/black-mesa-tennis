@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v60**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v61**).
 
 ---
 
@@ -69,7 +69,7 @@ stage1/                 one-time setup script + overlay for the PC project
 stage2/
   tt_android_stage2.sh  build script (copies native files, runs patches, packages APK)
   native/
-    patch_sdk_vulkan_fixes.py  SDK changes: fixes F1–F9 + counters D1–D3 (header lists them)
+    patch_sdk_vulkan_fixes.py  SDK changes: fixes F1–F10 + counters D1–D3 (header lists them)
     patch_game_msaa.py         patches generated sub_82150500 (RAGE tiled-rendering setup)
     main.cpp                   VdSwap hook: FPS counter, frame-time histogram, MSAA override
     tabletennis_app.h          app setup, FPS overlay (leave as is), UI repaint cap
@@ -139,11 +139,12 @@ were removed in v56; the history table below says what each experiment found.
 | v53 | "Fewer texture reloads (test)": first load normal, then only every 4th reload | Rallies **~38 → ~43 FPS** (choppy, textures popping); compute dispatches halved → texture re-conversion is a real share of the GPU load |
 | v54 | Launcher cleanup: removed Turnip mode, Fast memory watch (always on), Frames queued, Sync test (buffer skip), 540p, 30/20 Hz screen tests, retired experiments/pacing/occlusion. The only test row is **Performance test** (Off / Fewer texture reloads). Return-to-start pop-up restyled like the start screen | — |
 | v55 | **Texture hash skip**: on a reload caused only by CPU writes, hash the guest bytes (XXH3) and skip the GPU re-conversion if unchanged since the last load; GPU-written (resolved) textures always reload (`TT_TEX_HASH=off`). Profile line `texture loads per frame: asked / skipped / GPU-written / MB hashed`. Launcher: Performance test row removed; Play's green focus box removed | Rallies ~38.5 → **~39.4 FPS**; ~27 of ~59 loads/frame skipped, ~31 are GPU-written (resolves) and must reload |
-| v56 | **Cleanup**: fresh SDK sources each build; patch script rewritten as fixes F1–F9 + counters D1–D3; removed every finished experiment (kick, fence check, empty-submit, barrier merge/classes/skip, texture skip test, frames-in-flight, vblank/UI-rate overrides, GPU timestamps, timeline, mmio/audio/tiling/fence/tracker stats, TT_* switches) | Rallies **~41 FPS** (from ~39.4): the removed diagnostics/experiments had a real cost |
+| v56 | **Cleanup**: fresh SDK sources each build; patch script rewritten as fixes F1–F10 + counters D1–D3; removed every finished experiment (kick, fence check, empty-submit, barrier merge/classes/skip, texture skip test, frames-in-flight, vblank/UI-rate overrides, GPU timestamps, timeline, mmio/audio/tiling/fence/tracker stats, TT_* switches) | Rallies **~41 FPS** (from ~39.4): the removed diagnostics/experiments had a real cost |
 | v57 | Re-test round (Test row) | Same scene, FXAA on: Off ~40.8; **"No shadows" ~43.3 (+2.5)** but visible shadows remained: it skipped depth-only passes with pitches 1440, 640, 1120 (not the main shadows), no visible change noticed. Sysmem (AA off) ~41.2 ≈ no gain. Later runs (no-bin, 30 Hz, Off) were a much heavier scene (~1350 draws vs ~820, 39 vs 31 resolves) at ~30 FPS, so not comparable |
 | v58/v59 | Test row: skip depth-only pass by pitch; Screen 30 Hz | Same scene, FXAA on, rally averages: Off 40.9; skip 1440 41.0 (that pass isn't used in rallies); **skip 640 41.8 (+0.9, ~37 draws/frame)**; **skip 1120 41.7 (+0.8, ~57 draws/frame)**; Screen 30 Hz 40.7 (no gain, removed). No visible change noticed in any |
 | v59 | Game MSAA launcher row removed: always 1 sample (the v57 round's last four runs had it flipped On by accident, ~30 FPS); `TT_GAME_MSAA` switch removed | — |
-| **v60** | Test row: skip depth passes 640 + 1120 together (`TT_TEST=skip640,1120`); 30 Hz test code removed | **Not tested yet** (expect ~+2, as v57's combined skip) |
+| v60 | Test: skip depth passes 640 + 1120 together | Off 40.6 → **42.8 FPS (+2.2)**; screenshots matched (table and player shadows still drawn) |
+| **v61** | **F10**: those two depth-only passes skipped permanently; Test row and depth-pitch counters removed | **Not tested yet** (expect ~42–43) |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

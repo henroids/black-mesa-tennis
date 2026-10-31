@@ -511,19 +511,9 @@ void RunProfiler(std::string dir) {
           if (work) {
             auto per = [&](int i) { return (work[i] - work_prev[i]) / swaps; };
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
-                            "%.1f uploads (%.0f KB), %.0f draws skipped by a test\n",
+                            "%.1f uploads (%.0f KB), %.0f unused depth-pass draws skipped\n",
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
             std::memcpy(work_prev, work, sizeof work_prev);
-          }
-          if (const uint64_t* dp = FindStats("tt_depth_pitch")) {  // TEMPORARY test round
-            static uint64_t dp_prev[16] = {};
-            std::fprintf(f, "depth-only draws per frame by buffer pitch:");
-            for (int i = 0; i < 8 && dp[i * 2]; ++i) {
-              std::fprintf(f, "  %llu: %.1f", static_cast<unsigned long long>(dp[i * 2]),
-                           (dp[i * 2 + 1] - dp_prev[i * 2 + 1]) / swaps);
-            }
-            std::fprintf(f, "\n");
-            std::memcpy(dp_prev, dp, sizeof dp_prev);
           }
           if (tex) {
             auto per = [&](int i) { return (tex[i] - tex_prev[i]) / swaps; };
