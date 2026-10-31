@@ -199,6 +199,10 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 
 ## 8. Communication notes for the owner
 
+- **Small wins count (owner, 2026-11-01).** Big jumps are unlikely now; several +0.5–1 FPS
+  changes add up. Re-testing earlier ideas is welcome, since results change as other
+  bottlenecks are removed (the game is now GPU-bound). Run re-tests through one temporary
+  launcher "Test" row and remove it once the round is done.
 - **Clean up as you go (owner's standing rule).** When an experiment is finished, remove its code,
   env switches, launcher rows and counters in the same build that reports the result. Keep only
   fixes that measurably help and the diagnostics we actually read. Don't let dead code pile up.
