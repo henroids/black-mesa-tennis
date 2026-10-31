@@ -136,7 +136,7 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | v47 | Presenter refresh/paint/present + sparse binds on the timeline | Gap isn't caused by paint/present; no sparse binds |
 | v48 | Presenter's empty fence-only `vkQueueSubmit`s replaced by a 1-barrier command buffer | No change (~38) |
 | v49 | Merge back-to-back pipeline barriers in the deferred command buffer replay (`TT_MERGE_BARRIERS=off`) | **0 merged**: barriers are never adjacent; ~38 FPS |
-| **v50** | Classify barriers (buffer-only / memory-only / image) + launcher **Sync test** = skip buffer/memory-only barriers (`TT_SKIP_BUFFER_BARRIERS=1`), a measurement that may glitch the picture | **Not tested yet** |
+| v50 | Classify barriers (buffer-only / memory-only / image) + launcher **Sync test** = skip buffer/memory-only barriers (`TT_SKIP_BUFFER_BARRIERS=1`) | Gameplay frame: ~900 buffer-only, 0 memory-only, ~186 image barriers. Skipping buffer barriers glitched the picture but gameplay stayed **~39 FPS** (menus 57 either way) → **barrier cost ruled out** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -169,8 +169,11 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 
 ## 7. Suggested next steps
 
-1. **Test v50**: rally FPS with Sync test Off vs "Skip buffer syncs (test)", plus the
-   `pipeline barriers per frame by kind` line. A big FPS jump when skipping proves barrier cost.
+1. The ~11–14 ms GPU gap after each frame's swap submission is **also present in menus** (where
+   frames are short enough to absorb it), so it's a fixed per-frame latency, not workload.
+   It matches the ~12–14 ms the KGSL fence query blocks for. Suspect: the driver/kernel only
+   releases the next submission once the previous one's completion is processed. Next A/B:
+   Qualcomm's proprietary driver (e.g. v863.1 for A7xx) vs Turnip V38.
 2. If merging saves few calls, find **where the barriers come from** (render target cache
    transitions, texture cache loads, shared-memory uploads, `SubmitBarriers`). Count per
    call site and reduce redundant ones (e.g. barriers with identical src/dst for unchanged
