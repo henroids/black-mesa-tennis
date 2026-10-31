@@ -87,6 +87,8 @@ stage2/
     LogExporter.java, ThreadMonitor.java, DriverManager.java, GameFiles.java
 tools/pixel_crt.py      unrelated photo filter
 tools/use_version.sh    switch to an earlier build by number
+Install-Table-Tennis.cmd + tools/installer/install.ps1   Windows installer (WSL check, ISO picker,
+                        root apt install, clone/pull, stage 1 + 2, opens Downloads)
 assets/                 README images (original artwork only, never game assets)
 docs/BUILDING.md        user-facing build guide + troubleshooting
 .github/ISSUE_TEMPLATE/ problem-report template (asks for logs, forbids game files)

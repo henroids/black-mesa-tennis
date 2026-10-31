@@ -70,7 +70,23 @@ Other Android devices with a recent Adreno GPU may work but haven't been tested.
 
 ## Building the APK
 
-Short version (details and troubleshooting in [docs/BUILDING.md](docs/BUILDING.md)):
+### Easy way: the Windows installer
+
+1. On this page, **Code → Download ZIP**, and unzip it anywhere.
+2. Double-click **`Install-Table-Tennis.cmd`**.
+3. If WSL/Ubuntu isn't installed yet, it offers to install it (asks for administrator
+   permission). Restart if Windows asks, finish Ubuntu's first-time setup (user name and
+   password), and double-click the installer again.
+4. Pick **your own ISO** in the file window. The installer installs the build tools, gets
+   the latest version, checks your ISO, builds everything (1–2 hours the first time), and
+   opens your **Downloads** folder with `TableTennis.apk` selected.
+
+Run it again whenever you want the latest version. It remembers your ISO and skips finished
+steps, so updates take minutes.
+
+### Manual way (any OS with Ubuntu 24.04)
+
+Details and troubleshooting are in [docs/BUILDING.md](docs/BUILDING.md):
 
 1. **Windows only:** install WSL with Ubuntu. In an *administrator* PowerShell:
    `wsl --install -d Ubuntu-24.04`, reboot, and pick a user name and password.
@@ -172,6 +188,7 @@ Please don't attach ISOs, APKs or other game files.
 |---|---|
 | `stage1/` | One-time setup: toolchain, ISO check, game recompilation |
 | `stage2/` | Builds the APK: emulator fixes (`native/`), the Android app and launcher (`app/`) |
+| `Install-Table-Tennis.cmd`, `tools/installer/` | Windows installer: your ISO in, APK out |
 | `tools/use_version.sh` | Switch to an earlier build (`bash tools/use_version.sh 61`) |
 | `tools/pixel_crt.py` | Unrelated helper (photo filter) |
 | `assets/` | Images for this README (original artwork, no game assets) |

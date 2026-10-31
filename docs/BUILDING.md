@@ -5,6 +5,9 @@ into an APK for **your own** Android device. Nothing in this repository contains
 or data; everything game-related is produced on your computer from your ISO, and the
 resulting APK must not be shared.
 
+> **On Windows, the easiest route is `Install-Table-Tennis.cmd`** in the repository root: it does
+> everything below for you (see the README). This page is the manual route and the reference.
+
 ## 1. Prepare the build computer
 
 ### Windows 10/11 (WSL2)
