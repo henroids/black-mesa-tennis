@@ -494,7 +494,7 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v58)
+# ========================================================= TEMPORARY TEST ROUND (v60)
 # Remove this whole section once the round's results are in (HANDOFF: clean up as you go).
 
 # ---- T1 Depth-only passes. v57 "No shadows" (skip every depth-only draw into a depth buffer
@@ -508,9 +508,17 @@ edit(CP, (
     "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
     "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
     "                     : 0)) {  // tt-android T1: depth-only draw\n"
-    "    static const uint32_t tt_skip_pitch = [] {\n"
+    "    // TT_TEST=skip<pitch>[,<pitch>...]\n"
+    "    static const std::vector<uint32_t> tt_skip_pitches = [] {\n"
+    "      std::vector<uint32_t> list;\n"
     "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      return v && std::strncmp(v, \"skip\", 4) == 0 ? uint32_t(std::atoi(v + 4)) : 0u;\n"
+    "      if (v && std::strncmp(v, \"skip\", 4) == 0) {\n"
+    "        for (const char* p = v + 4; *p;) {\n"
+    "          list.push_back(uint32_t(std::strtoul(p, const_cast<char**>(&p), 10)));\n"
+    "          if (*p == ',') ++p; else break;\n"
+    "        }\n"
+    "      }\n"
+    "      return list;\n"
     "    }();\n"
     "    const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
     "    for (int i = 0; i < 8; ++i) {\n"
@@ -521,13 +529,13 @@ edit(CP, (
     "        break;\n"
     "      }\n"
     "    }\n"
-    "    if (tt_skip_pitch && pitch == tt_skip_pitch) {\n"
+    "    if (std::find(tt_skip_pitches.begin(), tt_skip_pitches.end(), pitch) != tt_skip_pitches.end()) {\n"
     "      __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
     "      return true;\n"
     "    }\n"
     "  }\n"),
     prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_depth_pitch[16] = {};  // T1\n',
-    includes=("#include <cstdlib>", "#include <cstring>"))
+    includes=("#include <algorithm>", "#include <cstdlib>", "#include <cstring>", "#include <vector>"))
 done.append("T1 test: depth-only draws counted per pitch; TT_TEST=skip<pitch>")
 
 print("\n".join(done))
