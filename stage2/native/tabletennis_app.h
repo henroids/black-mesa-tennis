@@ -3,6 +3,8 @@
 #pragma once
 
 #include <rex/cvar.h>
+#include <cstdlib>
+#include <string_view>
 #include <rex/filesystem.h>
 #include "offline_menu_device.h"
 #include "intro_skip.h"
@@ -84,7 +86,12 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
     {
       using clock = std::chrono::steady_clock;
       static auto next_draw = clock::now();
-      constexpr auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / 60);
+      // TEMPORARY test round (v57): TT_TEST=ui30 redraws the screen at 30 Hz.
+      static const bool tt_ui30 = [] {
+        const char* v = std::getenv("TT_TEST");
+        return v && std::string_view(v) == "ui30";
+      }();
+      const auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / (tt_ui30 ? 30 : 60));
       if (next_draw > clock::now()) std::this_thread::sleep_until(next_draw);
       next_draw = std::max(next_draw + kUiPeriod, clock::now() - kUiPeriod);
     }

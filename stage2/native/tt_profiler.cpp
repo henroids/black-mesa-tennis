@@ -511,8 +511,8 @@ void RunProfiler(std::string dir) {
           if (work) {
             auto per = [&](int i) { return (work[i] - work_prev[i]) / swaps; };
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
-                            "%.1f uploads (%.0f KB)\n",
-                         per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0);
+                            "%.1f uploads (%.0f KB), %.0f draws skipped by a test\n",
+                         per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
           if (tex) {

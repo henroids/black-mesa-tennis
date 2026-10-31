@@ -19,7 +19,7 @@ FIXES (each measured to help; see HANDOFF.md for the history)
 DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D1  tt_frame_stats  [0] guest vblanks [1] CP wait-for-memory sleeps [2] their ns [3] swaps
   D2  tt_work_stats   [0] draws [1] resolves [2] texture loads [3] texture bytes
-                      [6] upload calls [7] upload bytes
+                      [6] upload calls [7] upload bytes [8] draws skipped by a test
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
 """
@@ -493,5 +493,37 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
+
+# ========================================================= TEMPORARY TEST ROUND (v57)
+# Remove this whole section once the round's results are in (HANDOFF: clean up as you go).
+
+# ---- T1 "No shadows" (TT_TEST=noshadow): skip depth-only draws into a depth buffer whose
+#      pitch isn't the 1280-pixel screen's (shadow maps; the screen's own depth pre-pass is
+#      kept). Logs each distinct skipped pitch once; skipped draws counted in tt_work_stats[8].
+edit(CP, (
+    "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n",
+    "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n"
+    "  {  // tt-android T1: no-shadows test\n"
+    "    static const bool tt_noshadow = [] {\n"
+    "      const char* v = std::getenv(\"TT_TEST\");\n"
+    "      return v && std::string_view(v) == \"noshadow\";\n"
+    "    }();\n"
+    "    if (tt_noshadow && normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
+    "        !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                       : 0)) {\n"
+    "      const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
+    "      if (pitch != 1280) {\n"
+    "        static uint32_t logged[8] = {};\n"
+    "        for (uint32_t& l : logged) {\n"
+    "          if (l == pitch) break;\n"
+    "          if (!l) { l = pitch; REXLOG_INFO(\"tt: no-shadows test skips depth-only draws, pitch {}\", pitch); break; }\n"
+    "        }\n"
+    "        __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
+    "        return true;\n"
+    "      }\n"
+    "    }\n"
+    "  }\n"),
+    includes=("#include <cstdlib>", "#include <string_view>"))
+done.append("T1 test: no shadows (TT_TEST=noshadow)")
 
 print("\n".join(done))
