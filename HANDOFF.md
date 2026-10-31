@@ -181,6 +181,13 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 
 ## 7. Suggested next steps
 
+### Pinned (revisit for small wins)
+- **Turnip sysmem** (`TU_DEBUG=sysmem`): v57 ~41.2 vs ~40.8 baseline, but it ran with AA off,
+  so sysmem and AA-off weren't isolated. Re-test each alone in the same scene.
+- **Anti-aliasing Off** alone: never measured on its own since the game became GPU-bound.
+- **Screen 30 Hz**: v57 run was in a heavier scene; re-tested in v58.
+
+
 1. The ~11–14 ms GPU gap after each frame's swap submission is **also present in menus** (where
    frames are short enough to absorb it), so it's a fixed per-frame latency, not workload.
    It matches the ~12–14 ms the KGSL fence query blocks for. Suspect: the driver/kernel only
