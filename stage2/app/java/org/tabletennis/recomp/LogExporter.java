@@ -67,7 +67,6 @@ final class LogExporter {
         Settings s = Settings.load(c);
         r.append("Settings now: ").append(s.describe(DriverManager.selected(c))).append('\n');
         r.append("Arguments: ").append(s.toArguments(iso == null ? null : iso.getAbsolutePath())).append('\n');
-        r.append("TU_DEBUG: ").append(s.turnipDebug()).append('\n');
         return r.toString();
     }
 

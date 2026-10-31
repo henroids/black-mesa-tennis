@@ -49,17 +49,8 @@ public final class GameActivity extends SDLActivity {
         File base = GameFiles.baseDir(this);
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
-        String tu = settings.turnipDebug();
-        if (!tu.isEmpty()) setEnv("TU_DEBUG", tu);
-        if (settings.experiment == Settings.EXPERIMENT_STRICT_FETCH) setEnv("TT_STRICT_FETCH", "1");
-        if (settings.dumpShaders) new File(settings.shaderDumpPath).mkdirs();
-        if (!settings.fastWatch) setEnv("TT_SLOW_WATCH", "1");
-        if (settings.framesInFlight() != null) setEnv("TT_FRAMES_IN_FLIGHT", settings.framesInFlight());
-        if (settings.uiUncapped()) setEnv("TT_UI_UNCAPPED", "1");
         setEnv("TT_GAME_MSAA", settings.gameMsaa == 0 ? "off" : "on");
-        if (settings.syncTest == 1) setEnv("TT_SKIP_BUFFER_BARRIERS", "1");
-        if (settings.syncTest == 2) setEnv("TT_SKIP_TEXTURE_RELOADS", "1");
-        if (settings.uiHz() != null) setEnv("TT_UI_HZ", settings.uiHz());
+        if (settings.perfTest == 1) setEnv("TT_SKIP_TEXTURE_RELOADS", "1");
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
             File logs = GameFiles.logsDir(this);
@@ -120,7 +111,7 @@ public final class GameActivity extends SDLActivity {
     // ------------------------------------------------------------ return to start screen
 
     private boolean selectHeld, startHeld;
-    private android.app.AlertDialog quitDialog;
+    private android.app.Dialog quitDialog;
 
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         int code = event.getKeyCode();
@@ -143,20 +134,148 @@ public final class GameActivity extends SDLActivity {
 
     @Override public void onBackPressed() { showQuitDialog(); }
 
+    // Return-to-start pop-up in the start screen's style: black, GamePocket font, inverted
+    // white bar on the selected row, A to select, B to keep playing.
+    private int quitChoice;  // 0 = keep playing, 1 = return
+    private android.widget.TextView[] quitRows;
+
     private void showQuitDialog() {
         if (quitDialog != null && quitDialog.isShowing()) return;
-        quitDialog = new android.app.AlertDialog.Builder(this,
-                android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Return to start screen?")
-                .setMessage("The game will close. Unsaved progress in the current match is lost.")
-                .setPositiveButton("Return", (d, w) -> returnToLauncher())
-                .setNegativeButton("Keep playing", (d, w) -> d.dismiss())
-                .setOnDismissListener(d -> hideSystemBars())
-                .create();
+        android.graphics.Typeface font;
+        try {
+            font = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/GamePocket-Regular.ttf");
+        } catch (RuntimeException e) {
+            font = android.graphics.Typeface.MONOSPACE;
+        }
+        final int white = android.graphics.Color.rgb(250, 250, 250);
+        final int grey = android.graphics.Color.rgb(154, 154, 154);
+        final int iconGrey = android.graphics.Color.rgb(122, 122, 122);
+
+        android.widget.LinearLayout panel = new android.widget.LinearLayout(this);
+        panel.setOrientation(android.widget.LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(16), dp(18), dp(12));
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(android.graphics.Color.BLACK);
+        bg.setStroke(dp(1), android.graphics.Color.rgb(74, 74, 74));
+        panel.setBackground(bg);
+
+        android.widget.TextView title = quitText(font, 18, white);
+        title.setText("Return to start screen?");
+        panel.addView(title);
+        android.widget.TextView note = quitText(font, 13, grey);
+        note.setText("The game will close. The current match is lost.");
+        note.setPadding(0, dp(6), 0, dp(12));
+        panel.addView(note);
+
+        String[] labels = {"Keep playing", "Return to start screen"};
+        quitRows = new android.widget.TextView[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            android.widget.TextView row = quitText(font, 17, white);
+            row.setText(labels[i]);
+            row.setPadding(dp(10), dp(3), dp(10), dp(3));
+            final int index = i;
+            row.setOnClickListener(v -> {
+                if (quitChoice == index) chooseQuit(); else { quitChoice = index; renderQuit(); }
+            });
+            quitRows[i] = row;
+            panel.addView(row, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        }
+
+        android.widget.LinearLayout help = new android.widget.LinearLayout(this);
+        help.setGravity(android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.END);
+        help.setPadding(0, dp(12), 0, 0);
+        help.addView(quitGlyph(font, "A", iconGrey));
+        help.addView(quitHelp(font, "Select", grey));
+        help.addView(quitGlyph(font, "B", iconGrey));
+        help.addView(quitHelp(font, "Back", grey));
+        panel.addView(help, new android.widget.LinearLayout.LayoutParams(-1, -2));
+
+        quitDialog = new android.app.Dialog(this, android.R.style.Theme_Translucent_NoTitleBar);
+        android.widget.FrameLayout dim = new android.widget.FrameLayout(this);
+        dim.setBackgroundColor(android.graphics.Color.argb(170, 0, 0, 0));
+        android.widget.FrameLayout.LayoutParams plp = new android.widget.FrameLayout.LayoutParams(
+                dp(360), -2, android.view.Gravity.CENTER);
+        dim.addView(panel, plp);
+        quitDialog.setContentView(dim);
+        quitDialog.setOnDismissListener(d -> hideSystemBars());
+        quitDialog.setOnKeyListener((d, keyCode, event) -> {
+            if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return true;
+            switch (keyCode) {
+                case android.view.KeyEvent.KEYCODE_DPAD_UP:
+                case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
+                case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
+                case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
+                    quitChoice = 1 - quitChoice; renderQuit(); return true;
+                case android.view.KeyEvent.KEYCODE_BUTTON_A:
+                case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
+                case android.view.KeyEvent.KEYCODE_ENTER:
+                case android.view.KeyEvent.KEYCODE_BUTTON_START:
+                    chooseQuit(); return true;
+                case android.view.KeyEvent.KEYCODE_BUTTON_B:
+                case android.view.KeyEvent.KEYCODE_BACK:
+                    d.dismiss(); return true;
+                default:
+                    return true;
+            }
+        });
+        quitChoice = 0;
+        renderQuit();
         quitDialog.show();
-        android.widget.Button keep = quitDialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE);
-        if (keep != null) keep.requestFocus();
+        android.view.Window w = quitDialog.getWindow();
+        if (w != null) {
+            w.setLayout(-1, -1);
+            if (android.os.Build.VERSION.SDK_INT >= 30 && w.getInsetsController() != null) {
+                w.getInsetsController().hide(android.view.WindowInsets.Type.systemBars());
+            }
+        }
     }
+
+    private void renderQuit() {
+        if (quitRows == null) return;
+        for (int i = 0; i < quitRows.length; i++) {
+            boolean on = i == quitChoice;
+            quitRows[i].setBackgroundColor(on ? android.graphics.Color.rgb(250, 250, 250)
+                                              : android.graphics.Color.BLACK);
+            quitRows[i].setTextColor(on ? android.graphics.Color.BLACK
+                                        : android.graphics.Color.rgb(250, 250, 250));
+        }
+    }
+
+    private void chooseQuit() {
+        if (quitChoice == 1) returnToLauncher();
+        else if (quitDialog != null) quitDialog.dismiss();
+    }
+
+    private android.widget.TextView quitText(android.graphics.Typeface font, int sp, int color) {
+        android.widget.TextView t = new android.widget.TextView(this);
+        t.setTypeface(font);
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        t.setIncludeFontPadding(false);
+        return t;
+    }
+
+    private android.widget.TextView quitHelp(android.graphics.Typeface font, String s, int color) {
+        android.widget.TextView t = quitText(font, 14, color);
+        t.setText(s);
+        t.setPadding(dp(4), 0, dp(12), 0);
+        return t;
+    }
+
+    private android.widget.TextView quitGlyph(android.graphics.Typeface font, String s, int color) {
+        android.widget.TextView t = quitText(font, 11, android.graphics.Color.BLACK);
+        t.setText(s);
+        t.setGravity(android.view.Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(color);
+        g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        t.setBackground(g);
+        t.setMinWidth(dp(20));
+        t.setMinHeight(dp(20));
+        return t;
+    }
+
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
     private void returnToLauncher() {
         android.content.Intent home = new android.content.Intent(this, LauncherActivity.class)

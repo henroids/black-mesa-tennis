@@ -94,11 +94,9 @@ public final class LauncherActivity extends Activity {
 
     // Boxed settings so Choice rows can edit them in place.
     private final int[] resolution = new int[1], aa = new int[1], fps = new int[1],
-            showFps = new int[1], turnip = new int[1], driver = new int[1],
-            shaderMode = new int[1], shaderThreads = new int[1], perfLog = new int[1],
-            experiment = new int[1], dumpShaders = new int[1], fastWatch = new int[1],
-            occlusion = new int[1], pacing = new int[1], gameMsaa = new int[1],
-            queued = new int[1], syncTest = new int[1];
+            showFps = new int[1], driver = new int[1], shaderMode = new int[1],
+            shaderThreads = new int[1], perfLog = new int[1], gameMsaa = new int[1],
+            perfTest = new int[1];
     private List<String> driverIds = new ArrayList<>();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -115,20 +113,11 @@ public final class LauncherActivity extends Activity {
         aa[0] = settings.aa;
         fps[0] = settings.fps;
         showFps[0] = settings.showFps ? 1 : 0;
-        turnip[0] = settings.turnipMode;
         shaderMode[0] = settings.shaderMode;
         shaderThreads[0] = settings.shaderThreads;
         perfLog[0] = settings.perfLog ? 1 : 0;
-        experiment[0] = settings.experiment;
-        dumpShaders[0] = settings.dumpShaders ? 1 : 0;
-        fastWatch[0] = settings.fastWatch ? 1 : 0;
-        occlusion[0] = settings.occlusion;
-        pacing[0] = settings.pacing;
         gameMsaa[0] = settings.gameMsaa;
-        queued[0] = settings.queued;
-        syncTest[0] = settings.syncTest;
-        experiment[0] = 0;  // experiments retired: the skin fix is built in now
-        if (settings.experiment != 0) { settings.experiment = 0; settings.save(this); }
+        perfTest[0] = settings.perfTest;
         loadDrivers();
         buildRows();
         buildScreen();
@@ -172,10 +161,9 @@ public final class LauncherActivity extends Activity {
             @Override void activate() { if (!busy) pick(REQUEST_ISO); }
         });
         Runnable save = this::saveSettings;
-        rows.add(new Choice("Resolution", new String[]{"720p", "1440p (2x)", "540p"}, resolution, save));
+        rows.add(new Choice("Resolution", new String[]{"720p", "1440p (2x)"}, resolution, save));
         rows.add(new Choice("Anti-aliasing", new String[]{"Off", "FXAA", "FXAA extreme"}, aa, save));
-        rows.add(new Choice("Frame rate", new String[]{"60 FPS", "30 FPS", "Uncapped",
-                "60 FPS + 30 Hz screen", "60 FPS + 20 Hz screen"}, fps, save));
+        rows.add(new Choice("Frame rate", new String[]{"60 FPS", "30 FPS", "Uncapped"}, fps, save));
         rows.add(new Choice("Show FPS", new String[]{"Off", "On"}, showFps, save));
         rows.add(new Choice("Shaders", new String[]{"Async (may pop in)", "Wait (complete)"}, shaderMode, save));
         rows.add(new Choice("Shader threads", new String[]{"2", "4", "6"}, shaderThreads, save));
@@ -189,7 +177,6 @@ public final class LauncherActivity extends Activity {
             }
             @Override void activate() { change(1); }
         });
-        rows.add(new Choice("Turnip mode", new String[]{"Auto", "Sysmem", "Sysmem no-bin"}, turnip, save));
         rows.add(new Row("Import driver") {
             @Override void activate() { if (!busy) pick(REQUEST_DRIVER); }
         });
@@ -200,10 +187,8 @@ public final class LauncherActivity extends Activity {
             }
             @Override void activate() { removeDriver(); }
         });
-        rows.add(new Choice("Fast memory watch", new String[]{"Off", "On"}, fastWatch, save));
         rows.add(new Choice("Game MSAA", Settings.GAME_MSAA_LABELS, gameMsaa, save));
-        rows.add(new Choice("Frames queued", Settings.QUEUED_LABELS, queued, save));
-        rows.add(new Choice("Sync test", Settings.SYNC_TEST_LABELS, syncTest, save));
+        rows.add(new Choice("Performance test", Settings.PERF_TEST_LABELS, perfTest, save));
         rows.add(new Choice("Performance log", new String[]{"Off", "On"}, perfLog, save));
         rows.add(new Row("Export logs") {
             @Override void activate() { exportLogs(); }
@@ -218,18 +203,11 @@ public final class LauncherActivity extends Activity {
         settings.aa = aa[0];
         settings.fps = fps[0];
         settings.showFps = showFps[0] == 1;
-        settings.turnipMode = turnip[0];
         settings.shaderMode = shaderMode[0];
         settings.shaderThreads = shaderThreads[0];
         settings.perfLog = perfLog[0] == 1;
-        settings.experiment = experiment[0];
-        settings.dumpShaders = dumpShaders[0] == 1;
-        settings.fastWatch = fastWatch[0] == 1;
-        settings.occlusion = 0;  // the game makes no occlusion queries; row retired
-        settings.pacing = 0;  // pacing tests retired (no effect)
         settings.gameMsaa = gameMsaa[0];
-        settings.queued = queued[0];
-        settings.syncTest = syncTest[0];
+        settings.perfTest = perfTest[0];
         settings.save(this);
     }
 
