@@ -1777,6 +1777,28 @@ if "TT_SKIP_TEXTURE_RELOADS" not in t:
     tc.write_text(t)
     changed.append("texture reload cost test (TT_SKIP_TEXTURE_RELOADS)")
 
+# ---- 35. v52's skip-all-reloads test blanked the whole screen (menus need their textures
+#          updated). Playable version: every texture loads normally the first time, then
+#          only every 4th reload is done (frequently changing images update at 1/4 rate).
+#          If FPS rises clearly, texture conversion is a big part of the GPU load.
+#          TT_SKIP_TEXTURE_RELOADS=1 now means this 1-in-4 mode.
+t = tc.read_text()
+if "patch 35" not in t:
+    old = ("    static std::unordered_set<const void*> tt_seen;\n"
+           "    if (tt_skip && !tt_seen.insert(&texture).second) return true;\n")
+    new = ("    static std::unordered_map<const void*, uint32_t> tt_seen;  // tt-android patch 35\n"
+           "    if (tt_skip) {\n"
+           "      const uint32_t n = tt_seen[&texture]++;\n"
+           "      if (n > 0 && (n % 4) != 0) return true;\n"
+           "    }\n")
+    if t.count(old) != 1:
+        sys.exit("texture reload 1-in-4: patch 34 code not found")
+    t = t.replace(old, new)
+    if "#include <unordered_map>" not in t:
+        t = t.replace("#include <cstdint>", "#include <cstdint>\n#include <unordered_map>", 1)
+    tc.write_text(t)
+    changed.append("texture reload test: 1 in 4")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).

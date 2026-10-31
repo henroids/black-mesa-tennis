@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v52**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v53**).
 
 ---
 
@@ -139,7 +139,8 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | v50 | Classify barriers (buffer-only / memory-only / image) + launcher **Sync test** = skip buffer/memory-only barriers (`TT_SKIP_BUFFER_BARRIERS=1`) | Gameplay frame: ~900 buffer-only, 0 memory-only, ~186 image barriers. Skipping buffer barriers glitched the picture but gameplay stayed **~39 FPS** (menus 57 either way) → **barrier cost ruled out** |
 | (no build) | Qualcomm proprietary driver v863.1 | ~25 FPS + graphical errors; the per-frame GPU gap is there too (~21 ms) → not Turnip-specific |
 | v51 | Timeline records the real `vkQueueSubmit` (event 15) | Batches reach the driver ~50 ms before the GPU starts them (queue 4 deep), and **kgsl reports the GPU 99% busy at its top clock (680 MHz)** in rallies → the game **is GPU-bound**; Vulkan timestamps undercount (~13 of ~26 ms/frame). Earlier "4% @ 615 MHz" readings were stale |
-| **v52** | Launcher Sync test → "Skip texture reloads (test)" (`TT_SKIP_TEXTURE_RELOADS=1`): each texture is loaded only the first time (stale picture) to measure the ~43 MB/frame texture conversion cost | **Not tested yet** |
+| v52 | "Skip texture reloads (test)": each texture loaded only once | Screen blank, menus invisible → unplayable, no measurement |
+| **v53** | "Fewer texture reloads (test)": first load normal, then only every 4th reload (`TT_SKIP_TEXTURE_RELOADS=1`) | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
