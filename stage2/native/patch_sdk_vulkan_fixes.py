@@ -513,7 +513,7 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v62)
+# ========================================================= TEMPORARY TEST ROUND (v63)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
 
 # ---- T1 Pass census, to find the real shadows and other heavy passes: every draw is counted
@@ -531,6 +531,19 @@ edit(CP, (
     "                            (uint64_t(tt_writes_color != 0) << 20) |\n"
     "                            (uint64_t(normalized_depth_control.z_enable &&\n"
     "                                      normalized_depth_control.z_write_enable) << 21);\n"
+    "    // TT_TEST=pass<pitch>c<0|1>d<0|1> skips draws with exactly that setup (test only)\n"
+    "    static const int64_t tt_skip_key = [] {\n"
+    "      const char* v = std::getenv(\"TT_TEST\");\n"
+    "      unsigned pitch = 0, colour = 0, depth = 0;\n"
+    "      if (v && std::sscanf(v, \"pass%uc%ud%u\", &pitch, &colour, &depth) == 3) {\n"
+    "        return int64_t(pitch) | (int64_t(colour != 0) << 20) | (int64_t(depth != 0) << 21);\n"
+    "      }\n"
+    "      return int64_t(-1);\n"
+    "    }();\n"
+    "    if (tt_skip_key >= 0 && int64_t(tt_key & ~(uint64_t(0xF) << 16)) == tt_skip_key) {\n"
+    "      __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
+    "      return true;\n"
+    "    }\n"
     "    for (int i = 0; i < 24; ++i) {\n"
     "      uint64_t& slot = tt_pass_census[i * 2];\n"
     "      if (slot == 0) slot = tt_key | (uint64_t(1) << 40);\n"
@@ -543,7 +556,8 @@ edit(CP, (
     "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
     "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
     "                     : 0)) {  // tt-android F10: unused depth-only passes\n"),
-    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_pass_census[48] = {};  // T1\n')
-done.append("T1 test: render-pass census")
+    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_pass_census[48] = {};  // T1\n',
+    includes=("#include <cstdio>", "#include <cstdlib>"))
+done.append("T1 test: render-pass census + TT_TEST=pass<pitch>c<0|1>d<0|1> skip")
 
 print("\n".join(done))

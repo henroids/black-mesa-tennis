@@ -511,11 +511,11 @@ void RunProfiler(std::string dir) {
           if (work) {
             auto per = [&](int i) { return (work[i] - work_prev[i]) / swaps; };
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
-                            "%.1f uploads (%.0f KB), %.0f unused depth-pass draws skipped\n",
-                         per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
+                            "%.1f uploads (%.0f KB), %.0f unused depth-pass draws skipped, %.0f skipped by a test\n",
+                         per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8), per(9));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
-          if (const uint64_t* pc = FindStats("tt_pass_census")) {  // TEMPORARY test round (v62)
+          if (const uint64_t* pc = FindStats("tt_pass_census")) {  // TEMPORARY test round (v63)
             static uint64_t pc_prev[48] = {};
             std::vector<std::pair<double, uint64_t>> passes;
             for (int i = 0; i < 24 && pc[i * 2]; ++i) {

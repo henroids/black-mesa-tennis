@@ -17,8 +17,10 @@ final class Settings {
     static final int[] FPS_VALUES = {60, 30, 0};
     static final int[] SHADER_THREAD_VALUES = {2, 4, 6};
 
-    // TEMPORARY test round (v62): remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "Turnip sysmem"};
+    // TEMPORARY test round (v63): remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Skip pass A (no-colour, full size)",
+            "Skip pass B (colour, half size)", "Skip pass C (quarter size)"};
+    static final String[] TEST_VALUES = {null, "pass1280c0d0", "pass640c1d0", "pass320c1d1"};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -41,7 +43,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v62", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v63", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -54,7 +56,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v62", test)
+                .putInt("test_v63", test)
                 .commit();
     }
 
