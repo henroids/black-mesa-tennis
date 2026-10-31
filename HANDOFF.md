@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v50**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v51**).
 
 ---
 
@@ -137,6 +137,8 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | v48 | Presenter's empty fence-only `vkQueueSubmit`s replaced by a 1-barrier command buffer | No change (~38) |
 | v49 | Merge back-to-back pipeline barriers in the deferred command buffer replay (`TT_MERGE_BARRIERS=off`) | **0 merged**: barriers are never adjacent; ~38 FPS |
 | v50 | Classify barriers (buffer-only / memory-only / image) + launcher **Sync test** = skip buffer/memory-only barriers (`TT_SKIP_BUFFER_BARRIERS=1`) | Gameplay frame: ~900 buffer-only, 0 memory-only, ~186 image barriers. Skipping buffer barriers glitched the picture but gameplay stayed **~39 FPS** (menus 57 either way) → **barrier cost ruled out** |
+| (no build) | Qualcomm proprietary driver v863.1 | ~25 FPS + graphical errors; the per-frame GPU gap is there too (~21 ms) → not Turnip-specific |
+| **v51** | Timeline records the real `vkQueueSubmit` of each CP submission (event 15, "QUEUE SUBMIT") | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

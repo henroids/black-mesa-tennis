@@ -502,6 +502,7 @@ void DumpTimeline(const std::string& dir, double session) {
       case 12: std::fprintf(f, "%9.3f  presenter: UI paint submitted\n", ms); break;
       case 13: std::fprintf(f, "%9.3f  presenter: presented\n", ms); break;
       case 14: std::fprintf(f, "%9.3f  presenter: paint done (CPU saw it)\n", ms); break;
+      case 15: std::fprintf(f, "%9.3f  QUEUE SUBMIT #%llu (handed to the driver)\n", ms, (unsigned long long)e.a); break;
       case 7:
         std::fprintf(f, "%9.3f  SWAP\n", ms);
         if (last_swap) std::fprintf(f, "           (%.1f ms since previous swap)\n", double(e.t - last_swap) / 1e6);

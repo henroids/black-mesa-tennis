@@ -1738,6 +1738,20 @@ if "tt-android: barrier classes" not in t:
     dcb.write_text(t)
     changed.append("barrier classes + buffer-barrier skip test")
 
+# ---- 33. v50 logs: the ~12 ms GPU gap per frame also appears with Qualcomm's own driver
+#          (~21 ms there), so it isn't Turnip. The timeline's "submit" event is taken when
+#          the command buffer is recorded, not when vkQueueSubmit actually hands it to the
+#          driver. Record the real vkQueueSubmit (event 15) to see whether the next batch
+#          reaches the driver only when the command processor's wait ends.
+c = cp.read_text()
+if "TtTimelineEvent(15," not in c:
+    old = "      submit_result = dfn.vkQueueSubmit(queue_acquisition.queue(), 1, &submit_info, fence);\n"
+    if c.count(old) != 1:
+        sys.exit("timeline: CP vkQueueSubmit not found")
+    c = c.replace(old, "      TtTimelineEvent(15, GetCurrentSubmission(), 0);  // tt-android: real queue submit\n" + old)
+    cp.write_text(c)
+    changed.append("timeline: real vkQueueSubmit time")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).
