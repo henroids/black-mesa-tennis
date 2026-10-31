@@ -187,7 +187,9 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 ## 7. Suggested next steps
 
 ### Pinned (revisit for small wins)
-- (none open: sysmem was noise in v62; AA Off = +1.3 FPS and stays a launcher choice.)
+- **Turnip sysmem** (`TU_DEBUG=sysmem`): owner may add it as a launcher option later. v57 ~41.2 vs 40.8
+  (with AA off); v62: +0.4 with FXAA, −0.0 with AA off, i.e. within run-to-run noise so far.
+- AA Off = +1.3 FPS (v62); stays a launcher choice (owner).
 
 
 1. The ~11–14 ms GPU gap after each frame's swap submission is **also present in menus** (where
