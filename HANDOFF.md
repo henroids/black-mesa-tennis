@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v66**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v67**).
 
 ---
 
@@ -51,6 +51,11 @@ test showed, and where things stand now. Last updated 2026-11-01 (build **v66**)
   apply exactly once to unmodified sources (no idempotency guards or repair steps), removing
   a patch really removes it, and unchanged files keep their timestamps (incremental rebuild).
 - Commits are made by the assistant and pushed; the owner only pulls and builds.
+- **Every version is a git tag** (`v30` … latest). To build an older version:
+  `git fetch --tags && git checkout v61 && bash stage2/tt_android_stage2.sh`, and back with
+  `git checkout main`. Versions from **v56** on build cleanly this way (fresh SDK sources).
+  Older ones (≤ v55) expect an SDK patched in place by earlier builds and may not build or
+  behave right; to really go back that far, re-run stage 1 first.
 
 ### Branches (read this first)
 - **`copilot`**: **your branch.** Commit and push all your work here. It started as an exact
@@ -69,7 +74,7 @@ stage1/                 one-time setup script + overlay for the PC project
 stage2/
   tt_android_stage2.sh  build script (copies native files, runs patches, packages APK)
   native/
-    patch_sdk_vulkan_fixes.py  SDK changes: fixes F1–F10 + counters D1–D3 (header lists them)
+    patch_sdk_vulkan_fixes.py  SDK changes: fixes F1–F11 + counters D1–D3 (header lists them)
     patch_game_msaa.py         patches generated sub_82150500 (RAGE tiled-rendering setup)
     main.cpp                   VdSwap hook: FPS counter, frame-time histogram, MSAA override
     tabletennis_app.h          app setup, FPS overlay (leave as is), UI repaint cap
@@ -139,17 +144,18 @@ were removed in v56; the history table below says what each experiment found.
 | v53 | "Fewer texture reloads (test)": first load normal, then only every 4th reload | Rallies **~38 → ~43 FPS** (choppy, textures popping); compute dispatches halved → texture re-conversion is a real share of the GPU load |
 | v54 | Launcher cleanup: removed Turnip mode, Fast memory watch (always on), Frames queued, Sync test (buffer skip), 540p, 30/20 Hz screen tests, retired experiments/pacing/occlusion. The only test row is **Performance test** (Off / Fewer texture reloads). Return-to-start pop-up restyled like the start screen | — |
 | v55 | **Texture hash skip**: on a reload caused only by CPU writes, hash the guest bytes (XXH3) and skip the GPU re-conversion if unchanged since the last load; GPU-written (resolved) textures always reload (`TT_TEX_HASH=off`). Profile line `texture loads per frame: asked / skipped / GPU-written / MB hashed`. Launcher: Performance test row removed; Play's green focus box removed | Rallies ~38.5 → **~39.4 FPS**; ~27 of ~59 loads/frame skipped, ~31 are GPU-written (resolves) and must reload |
-| v56 | **Cleanup**: fresh SDK sources each build; patch script rewritten as fixes F1–F10 + counters D1–D3; removed every finished experiment (kick, fence check, empty-submit, barrier merge/classes/skip, texture skip test, frames-in-flight, vblank/UI-rate overrides, GPU timestamps, timeline, mmio/audio/tiling/fence/tracker stats, TT_* switches) | Rallies **~41 FPS** (from ~39.4): the removed diagnostics/experiments had a real cost |
+| v56 | **Cleanup**: fresh SDK sources each build; patch script rewritten as fixes F1–F11 + counters D1–D3; removed every finished experiment (kick, fence check, empty-submit, barrier merge/classes/skip, texture skip test, frames-in-flight, vblank/UI-rate overrides, GPU timestamps, timeline, mmio/audio/tiling/fence/tracker stats, TT_* switches) | Rallies **~41 FPS** (from ~39.4): the removed diagnostics/experiments had a real cost |
 | v57 | Re-test round (Test row) | Same scene, FXAA on: Off ~40.8; **"No shadows" ~43.3 (+2.5)** but visible shadows remained: it skipped depth-only passes with pitches 1440, 640, 1120 (not the main shadows), no visible change noticed. Sysmem (AA off) ~41.2 ≈ no gain. Later runs (no-bin, 30 Hz, Off) were a much heavier scene (~1350 draws vs ~820, 39 vs 31 resolves) at ~30 FPS, so not comparable |
 | v58/v59 | Test row: skip depth-only pass by pitch; Screen 30 Hz | Same scene, FXAA on, rally averages: Off 40.9; skip 1440 41.0 (that pass isn't used in rallies); **skip 640 41.8 (+0.9, ~37 draws/frame)**; **skip 1120 41.7 (+0.8, ~57 draws/frame)**; Screen 30 Hz 40.7 (no gain, removed). No visible change noticed in any |
 | v59 | Game MSAA launcher row removed: always 1 sample (the v57 round's last four runs had it flipped On by accident, ~30 FPS); `TT_GAME_MSAA` switch removed | — |
 | v60 | Test: skip depth passes 640 + 1120 together | Off 40.6 → **42.8 FPS (+2.2)**; screenshots matched (table and player shadows still drawn) |
 | **v61** | **F10**: those two depth-only passes skipped permanently; Test row and depth-pitch counters removed | **Not tested yet** (expect ~42–43) |
 | v62 | Render-pass census; Turnip sysmem; AA off | Rally averages: FXAA 42.8; **AA Off 44.1 (+1.3)**; sysmem+FXAA 43.2; sysmem+AA off 42.7 → sysmem is noise (dropped). AA stays a launcher choice (owner). Census per frame: ~404 draws 1280 colour+depth (main scene), **~96 at 1280 with no colour and no depth write (stencil-only: likely shadow volumes)**, ~73 half-size colour (640), ~46 full-size colour, ~33 quarter-size colour+depth (320), ~9 + ~4 smaller colour (bloom-like chain), plus F10's skipped 640/1120 depth-only |
-| **v63/v64** | Test row skips one pass type at a time: A = 1280 no-colour/no-depth (~96), B = 640 colour (~73), C = 320 colour+depth (~33) | **Not tested yet** |
+| v63 | Skip one pass type at a time | Off ~42.9. **A** (1280, no colour, no depth write, ~96 draws): 43.4 (+0.5), no visible change. **B** (640 colour, ~73): 44.4 but background replaced by garbage and table shadow gone → B draws the background (likely the blurred backdrop) **and the real shadows**; keep. **C** (320, ~33): 43.7 but colours washed out → lighting/glow; keep |
 | v64 | In game: **hold Back 0.6 s = screenshot** (PixelCopy of the SDL surface → Pictures/TableTennis/tt_<date>_<time>.png, toast confirms); tap Back still opens the return-to-start pop-up | — |
 | v65 | Screenshot moved to **Select** (press and release on its own; Select+Start still opens the pop-up; the press still reaches the game). Back is tap-only again (owner's Back-hold closes apps system-wide) | — |
 | v66 | Screenshot moved to **L3 + R3** (both stick buttons): Select changes the camera in game, and Android never delivers the Home key to apps. Select is untouched again | — |
+| **v67** | **F11**: pass A skipped permanently; test row and pass census removed. Every version is now a git tag (`v30`…`v67`) | **Not tested yet** (expect ~43.5) |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -190,6 +196,7 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 ## 7. Suggested next steps
 
 ### Pinned (revisit for small wins)
+- **Pass B cheaper** (background + shadows, half size, ~73 draws, worth ~1.5 FPS if it were free): e.g. render it at a lower resolution, or update it every other frame.
 - **Turnip sysmem** (`TU_DEBUG=sysmem`): owner may add it as a launcher option later. v57 ~41.2 vs 40.8
   (with AA off); v62: +0.4 with FXAA, −0.0 with AA off, i.e. within run-to-run noise so far.
 - AA Off = +1.3 FPS (v62); stays a launcher choice (owner).

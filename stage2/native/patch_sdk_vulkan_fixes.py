@@ -16,11 +16,12 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F8        presenter: swapchain acquire waited on the CPU, present without semaphores
   F9        skip re-converting textures whose guest bytes didn't change          ~+1 FPS
   F10       skip two depth-only passes with no visible effect (640/1120 wide)     ~+2 FPS
+  F11       skip a full-size pass that writes neither colour nor depth (~96 draws) ~+0.5 FPS
 
 DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D1  tt_frame_stats  [0] guest vblanks [1] CP wait-for-memory sleeps [2] their ns [3] swaps
   D2  tt_work_stats   [0] draws [1] resolves [2] texture loads [3] texture bytes
-                      [6] upload calls [7] upload bytes [8] draws skipped by F10
+                      [6] upload calls [7] upload bytes [8] draws skipped by F10/F11
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
 """
@@ -444,7 +445,8 @@ done.append("F9 unchanged textures aren't re-converted")
 # ---- F10 Two depth-only passes the game draws every frame into depth buffers 640 and 1120
 #      pixels wide (~37 + ~57 draws) have no visible effect in rallies (v58-v60 screenshots
 #      matched; the real table/player shadows are drawn elsewhere). Skipping them: ~+2 FPS
-#      (40.6 -> 42.8). Skipped draws are counted in tt_work_stats[8].
+#      (40.6 -> 42.8). F11: a full-size pass (~96 draws per frame) that writes neither colour
+#      nor depth, also no visible change (v63/v66): ~+0.5 FPS. Both counted in tt_work_stats[8].
 edit(CP, (
     "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n",
     "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n"
@@ -456,8 +458,15 @@ edit(CP, (
     "      __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
     "      return true;\n"
     "    }\n"
+    "  }\n"
+    "  if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
+    "      !(normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) &&\n"
+    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                     : 0)) {  // tt-android F11: full-size pass that writes neither colour nor depth\n"
+    "    __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
+    "    return true;\n"
     "  }\n"))
-done.append("F10 unused depth-only passes (640/1120) skipped")
+done.append("F10/F11 passes with no visible effect skipped")
 
 # ====================================================================== DIAGNOSTICS
 
@@ -512,52 +521,5 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
-
-# ========================================================= TEMPORARY TEST ROUND (v63)
-# Remove this section once the round's results are in (HANDOFF: clean up as you go).
-
-# ---- T1 Pass census, to find the real shadows and other heavy passes: every draw is counted
-#      under its render-target setup (surface pitch, colour format of target 0, whether it
-#      writes colour, whether it writes depth). tt_pass_census: 24 x {key, draws}.
-edit(CP, (
-    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
-    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
-    "                     : 0)) {  // tt-android F10: unused depth-only passes\n",
-    "  {  // tt-android T1: pass census\n"
-    "    const uint32_t tt_writes_color =\n"
-    "        pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets()) : 0;\n"
-    "    const uint64_t tt_key = uint64_t(regs.Get<reg::RB_SURFACE_INFO>().surface_pitch) |\n"
-    "                            (uint64_t(regs.Get<reg::RB_COLOR_INFO>().color_format) << 16) |\n"
-    "                            (uint64_t(tt_writes_color != 0) << 20) |\n"
-    "                            (uint64_t(normalized_depth_control.z_enable &&\n"
-    "                                      normalized_depth_control.z_write_enable) << 21);\n"
-    "    // TT_TEST=pass<pitch>c<0|1>d<0|1> skips draws with exactly that setup (test only)\n"
-    "    static const int64_t tt_skip_key = [] {\n"
-    "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      unsigned pitch = 0, colour = 0, depth = 0;\n"
-    "      if (v && std::sscanf(v, \"pass%uc%ud%u\", &pitch, &colour, &depth) == 3) {\n"
-    "        return int64_t(pitch) | (int64_t(colour != 0) << 20) | (int64_t(depth != 0) << 21);\n"
-    "      }\n"
-    "      return int64_t(-1);\n"
-    "    }();\n"
-    "    if (tt_skip_key >= 0 && int64_t(tt_key & ~(uint64_t(0xF) << 16)) == tt_skip_key) {\n"
-    "      __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
-    "      return true;\n"
-    "    }\n"
-    "    for (int i = 0; i < 24; ++i) {\n"
-    "      uint64_t& slot = tt_pass_census[i * 2];\n"
-    "      if (slot == 0) slot = tt_key | (uint64_t(1) << 40);\n"
-    "      if ((slot & ~(uint64_t(1) << 40)) == tt_key) {\n"
-    "        __atomic_fetch_add(&tt_pass_census[i * 2 + 1], 1, __ATOMIC_RELAXED);\n"
-    "        break;\n"
-    "      }\n"
-    "    }\n"
-    "  }\n"
-    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
-    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
-    "                     : 0)) {  // tt-android F10: unused depth-only passes\n"),
-    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_pass_census[48] = {};  // T1\n',
-    includes=("#include <cstdio>", "#include <cstdlib>"))
-done.append("T1 test: render-pass census + TT_TEST=pass<pitch>c<0|1>d<0|1> skip")
 
 print("\n".join(done))
