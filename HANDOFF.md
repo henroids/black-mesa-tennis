@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v63**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v64**).
 
 ---
 
@@ -146,7 +146,8 @@ were removed in v56; the history table below says what each experiment found.
 | v60 | Test: skip depth passes 640 + 1120 together | Off 40.6 → **42.8 FPS (+2.2)**; screenshots matched (table and player shadows still drawn) |
 | **v61** | **F10**: those two depth-only passes skipped permanently; Test row and depth-pitch counters removed | **Not tested yet** (expect ~42–43) |
 | v62 | Render-pass census; Turnip sysmem; AA off | Rally averages: FXAA 42.8; **AA Off 44.1 (+1.3)**; sysmem+FXAA 43.2; sysmem+AA off 42.7 → sysmem is noise (dropped). AA stays a launcher choice (owner). Census per frame: ~404 draws 1280 colour+depth (main scene), **~96 at 1280 with no colour and no depth write (stencil-only: likely shadow volumes)**, ~73 half-size colour (640), ~46 full-size colour, ~33 quarter-size colour+depth (320), ~9 + ~4 smaller colour (bloom-like chain), plus F10's skipped 640/1120 depth-only |
-| **v63** | Test row skips one pass type at a time: A = 1280 no-colour/no-depth (~96), B = 640 colour (~73), C = 320 colour+depth (~33) | **Not tested yet** |
+| **v63/v64** | Test row skips one pass type at a time: A = 1280 no-colour/no-depth (~96), B = 640 colour (~73), C = 320 colour+depth (~33) | **Not tested yet** |
+| v64 | In game: **hold Back 0.6 s = screenshot** (PixelCopy of the SDL surface → Pictures/TableTennis/tt_<date>_<time>.png, toast confirms); tap Back still opens the return-to-start pop-up | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

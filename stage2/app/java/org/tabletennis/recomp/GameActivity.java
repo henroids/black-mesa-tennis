@@ -126,7 +126,14 @@ public final class GameActivity extends SDLActivity {
                 return true;
             }
             if (code == android.view.KeyEvent.KEYCODE_BACK) {
-                if (down && event.getRepeatCount() == 0) showQuitDialog();
+                // Tap: return-to-start pop-up. Hold (0.6 s): screenshot.
+                if (down && event.getRepeatCount() == 0) {
+                    backHeldForShot = false;
+                    shotHandler.postDelayed(holdForShot, 600);
+                } else if (!down) {
+                    shotHandler.removeCallbacks(holdForShot);
+                    if (!backHeldForShot) showQuitDialog();
+                }
                 return true;
             }
         }
@@ -134,6 +141,55 @@ public final class GameActivity extends SDLActivity {
     }
 
     @Override public void onBackPressed() { showQuitDialog(); }
+
+    // ------------------------------------------------------------ screenshots (hold Back)
+
+    private final android.os.Handler shotHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean backHeldForShot;
+    private final Runnable holdForShot = () -> {
+        backHeldForShot = true;
+        takeScreenshot();
+    };
+
+    /** Copies the game surface and saves it to Pictures/TableTennis (shows in the gallery). */
+    private void takeScreenshot() {
+        final android.view.SurfaceView surface = mSurface;
+        if (surface == null || surface.getWidth() == 0 || surface.getHeight() == 0) return;
+        final android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(
+                surface.getWidth(), surface.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+        android.view.PixelCopy.request(surface, bitmap, result -> {
+            if (result != android.view.PixelCopy.SUCCESS) {
+                toast("Screenshot failed");
+                return;
+            }
+            new Thread(() -> {
+                String name = "tt_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss",
+                        java.util.Locale.ROOT).format(new java.util.Date()) + ".png";
+                android.content.ContentValues values = new android.content.ContentValues();
+                values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name);
+                values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+                values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/TableTennis");
+                android.net.Uri uri = getContentResolver().insert(
+                        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                boolean ok = false;
+                if (uri != null) {
+                    try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+                        ok = out != null && bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                    } catch (java.io.IOException e) {
+                        Log.w(TAG, "screenshot not saved", e);
+                    }
+                }
+                bitmap.recycle();
+                final boolean saved = ok;
+                runOnUiThread(() -> toast(saved ? "Screenshot saved: Pictures/TableTennis/" + name
+                                                : "Screenshot failed"));
+            }, "tt-screenshot").start();
+        }, shotHandler);
+    }
+
+    private void toast(String text) {
+        android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_SHORT).show();
+    }
 
     // Return-to-start pop-up in the start screen's style: black, GamePocket font, inverted
     // white bar on the selected row, A to select, B to keep playing.
