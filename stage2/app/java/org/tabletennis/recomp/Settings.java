@@ -22,6 +22,11 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
+    // TEMPORARY test round (v69): remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Skip B part 1", "Skip B part 2", "Skip B part 3",
+            "Skip B part 4", "Skip B part 5"};
+    int test = 0;
+
     private static final String PREFS = "tt_settings";
 
     int resolution = 0;
@@ -42,6 +47,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
+        s.test = clamp(p.getInt("test_v69", 0), TEST_LABELS.length);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         return s;
     }
@@ -55,6 +61,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
+                .putInt("test_v69", test)
                 .putInt("hidden_passes", hiddenPasses)
                 .commit();
     }
@@ -68,6 +75,7 @@ final class Settings {
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
                 + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
                 + " | GPU driver: " + driver
+                + " | Test: " + TEST_LABELS[test]
                 + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }

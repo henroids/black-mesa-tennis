@@ -511,9 +511,21 @@ void RunProfiler(std::string dir) {
           if (work) {
             auto per = [&](int i) { return (work[i] - work_prev[i]) / swaps; };
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
-                            "%.1f uploads (%.0f KB), %.0f draws of unused passes skipped\n",
-                         per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
+                            "%.1f uploads (%.0f KB), %.0f draws of unused passes skipped, %.0f skipped by a test\n",
+                         per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8), per(9));
             std::memcpy(work_prev, work, sizeof work_prev);
+          }
+          if (const uint64_t* bs = FindStats("tt_bsplit")) {  // TEMPORARY test round (v69)
+            static uint64_t bs_prev[16] = {};
+            std::fprintf(f, "pass B segments per frame (in draw order):");
+            for (int i = 0; i < 8 && bs[i * 2]; ++i) {
+              std::fprintf(f, "  #%d base %llu fmt %llu: %.1f", i + 1,
+                           static_cast<unsigned long long>(bs[i * 2] & 0xFFF),
+                           static_cast<unsigned long long>((bs[i * 2] >> 12) & 0xF),
+                           (bs[i * 2 + 1] - bs_prev[i * 2 + 1]) / swaps);
+            }
+            std::fprintf(f, "\n");
+            std::memcpy(bs_prev, bs, sizeof bs_prev);
           }
           if (tex) {
             auto per = [&](int i) { return (tex[i] - tex_prev[i]) / swaps; };
