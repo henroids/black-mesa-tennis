@@ -50,7 +50,6 @@ public final class GameActivity extends SDLActivity {
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
         setEnv("TT_GAME_MSAA", settings.gameMsaa == 0 ? "off" : "on");
-        if (settings.perfTest == 1) setEnv("TT_SKIP_TEXTURE_RELOADS", "1");
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
             File logs = GameFiles.logsDir(this);
@@ -177,6 +176,8 @@ public final class GameActivity extends SDLActivity {
             row.setOnClickListener(v -> {
                 if (quitChoice == index) chooseQuit(); else { quitChoice = index; renderQuit(); }
             });
+            row.setFocusable(false);
+            row.setDefaultFocusHighlightEnabled(false);
             quitRows[i] = row;
             panel.addView(row, new android.widget.LinearLayout.LayoutParams(-1, -2));
         }

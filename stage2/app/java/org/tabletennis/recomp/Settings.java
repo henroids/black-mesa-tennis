@@ -19,8 +19,6 @@ final class Settings {
     // Game MSAA: off = the game renders 1 sample in one EDRAM tile instead of drawing
     // the scene once per strip (the big GPU cost). Host FXAA still smooths edges.
     static final String[] GAME_MSAA_LABELS = {"Off (faster)", "On (as shipped)"};
-    // Current performance measurement (only the one still being tested is offered).
-    static final String[] PERF_TEST_LABELS = {"Off", "Fewer texture reloads"};
 
     private static final String PREFS = "tt_settings";
 
@@ -31,7 +29,6 @@ final class Settings {
     int shaderMode = 1;     // 0 = async (draws placeholders while compiling), 1 = wait (no missing objects)
     int shaderThreads = 1;  // index into SHADER_THREAD_VALUES
     int gameMsaa = 0;
-    int perfTest = 0;
     boolean perfLog = true; // thread monitor + sampling profiler (logs/profile.txt)
 
     static Settings load(Context context) {
@@ -44,7 +41,6 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.gameMsaa = clamp(p.getInt("game_msaa", 0), GAME_MSAA_LABELS.length);
-        s.perfTest = clamp(p.getInt("perf_test", 0), PERF_TEST_LABELS.length);
         s.perfLog = p.getBoolean("perf_log", true);
         return s;
     }
@@ -58,7 +54,6 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putInt("game_msaa", gameMsaa)
-                .putInt("perf_test", perfTest)
                 .putBoolean("perf_log", perfLog)
                 .commit();
     }
@@ -73,7 +68,6 @@ final class Settings {
                 + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
                 + " | GPU driver: " + driver
                 + " | Game MSAA: " + GAME_MSAA_LABELS[gameMsaa]
-                + " | Performance test: " + PERF_TEST_LABELS[perfTest]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }
 

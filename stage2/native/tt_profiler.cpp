@@ -692,6 +692,15 @@ void RunProfiler(std::string dir) {
                          per(7) / 1024.0);
             std::memcpy(work_prev, work, sizeof work_prev);
           }
+          if (const uint64_t* tex = FindStats("tt_tex_stats")) {
+            static uint64_t tex_prev[4] = {};
+            const double sw3 = std::max<double>(1.0, double(frame[3] - frame_prev[3]));
+            std::fprintf(f, "texture loads per frame: %.1f asked, %.1f skipped (bytes unchanged), "
+                            "%.1f GPU-written, %.1f MB hashed\n",
+                         (tex[0] - tex_prev[0]) / sw3, (tex[1] - tex_prev[1]) / sw3,
+                         (tex[2] - tex_prev[2]) / sw3, (tex[3] - tex_prev[3]) / 1048576.0 / sw3);
+            std::memcpy(tex_prev, tex, sizeof tex_prev);
+          }
           if (!gtime) gtime = FindStats("tt_gputime_stats");
           if (gtime) {
             const double swaps = std::max<double>(1.0, double(frame[3] - frame_prev[3]));

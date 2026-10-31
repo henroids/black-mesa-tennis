@@ -95,8 +95,7 @@ public final class LauncherActivity extends Activity {
     // Boxed settings so Choice rows can edit them in place.
     private final int[] resolution = new int[1], aa = new int[1], fps = new int[1],
             showFps = new int[1], driver = new int[1], shaderMode = new int[1],
-            shaderThreads = new int[1], perfLog = new int[1], gameMsaa = new int[1],
-            perfTest = new int[1];
+            shaderThreads = new int[1], perfLog = new int[1], gameMsaa = new int[1];
     private List<String> driverIds = new ArrayList<>();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -117,7 +116,6 @@ public final class LauncherActivity extends Activity {
         shaderThreads[0] = settings.shaderThreads;
         perfLog[0] = settings.perfLog ? 1 : 0;
         gameMsaa[0] = settings.gameMsaa;
-        perfTest[0] = settings.perfTest;
         loadDrivers();
         buildRows();
         buildScreen();
@@ -188,7 +186,6 @@ public final class LauncherActivity extends Activity {
             @Override void activate() { removeDriver(); }
         });
         rows.add(new Choice("Game MSAA", Settings.GAME_MSAA_LABELS, gameMsaa, save));
-        rows.add(new Choice("Performance test", Settings.PERF_TEST_LABELS, perfTest, save));
         rows.add(new Choice("Performance log", new String[]{"Off", "On"}, perfLog, save));
         rows.add(new Row("Export logs") {
             @Override void activate() { exportLogs(); }
@@ -207,7 +204,6 @@ public final class LauncherActivity extends Activity {
         settings.shaderThreads = shaderThreads[0];
         settings.perfLog = perfLog[0] == 1;
         settings.gameMsaa = gameMsaa[0];
-        settings.perfTest = perfTest[0];
         settings.save(this);
     }
 
@@ -276,6 +272,10 @@ public final class LauncherActivity extends Activity {
             if (selected == index) row.activate(); else selected = index;
             render();
         });
+        // Our own white bar marks the selection; no system focus highlight (it drew a
+        // green box around Play).
+        v.setFocusable(false);
+        v.setDefaultFocusHighlightEnabled(false);
         row.view = v;
         list.addView(v, new LinearLayout.LayoutParams(-1, -2));
     }

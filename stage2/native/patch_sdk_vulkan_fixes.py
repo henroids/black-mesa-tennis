@@ -1799,6 +1799,95 @@ if "patch 35" not in t:
     tc.write_text(t)
     changed.append("texture reload test: 1 in 4")
 
+# ---- 36. v53 test: doing only 1 in 4 texture reloads took rallies from ~38 to ~43 FPS (with
+#          stale/popping textures), so the ~60 reloads / ~43 MB per frame are a real share of
+#          the GPU load. Correct version: when a texture was invalidated only by CPU writes,
+#          hash its guest bytes and skip the GPU re-conversion if they're identical to the
+#          last load (the game often rewrites data with the same values, or writes next to a
+#          texture in the same page). Textures written by the GPU (resolves) always reload.
+#          TT_TEX_HASH=off disables. tt_tex_stats: [0] loads asked [1] skipped (unchanged)
+#          [2] GPU-written (always loaded) [3] bytes hashed.
+cc = sdk / "src/graphics/pipeline/texture/cache.cpp"
+t = cc.read_text()
+if "tt_tex_gpu_dirty" not in t:
+    old = ("  Texture& texture = *static_cast<Texture*>(context);\n"
+           "  texture.WatchCallback(global_lock, argument != 0);\n")
+    new = ("  Texture& texture = *static_cast<Texture*>(context);\n"
+           "  if (invalidated_by_gpu) {  // tt-android patch 36\n"
+           "    std::lock_guard<std::mutex> tt_lock(tt_tex_gpu_mutex);\n"
+           "    tt_tex_gpu_dirty.insert(context);\n"
+           "  }\n"
+           "  texture.WatchCallback(global_lock, argument != 0);\n")
+    if t.count(old) != 1:
+        sys.exit("texture hash: WatchCallback not found")
+    t = t.replace(old, new)
+    ns = t.find("\nnamespace")
+    t = (t[:ns] + "\n// tt-android patch 36: textures last invalidated by GPU writes\n"
+         "std::mutex tt_tex_gpu_mutex;\nstd::unordered_set<const void*> tt_tex_gpu_dirty;\n" + t[ns:])
+    for inc in ("#include <mutex>", "#include <unordered_set>"):
+        if inc not in t:
+            t = t.replace("#include", inc + "\n#include", 1)
+    cc.write_text(t)
+t = tc.read_text()
+if "patch 36" not in t:
+    old = ("  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
+           "  TextureKey texture_key = vulkan_texture.key();\n")
+    new = ("  {  // tt-android patch 36: skip re-converting unchanged textures\n"
+           "    static const bool tt_hash_on = [] {\n"
+           "      const char* v = std::getenv(\"TT_TEX_HASH\");\n"
+           "      return !(v && std::string_view(v) == \"off\");\n"
+           "    }();\n"
+           "    struct TtTexState { TextureKey key; uint64_t base = 0, mips = 0; bool has_base = false, has_mips = false; };\n"
+           "    static std::unordered_map<const void*, TtTexState> tt_states;\n"
+           "    __atomic_fetch_add(&tt_tex_stats[0], 1, __ATOMIC_RELAXED);\n"
+           "    bool tt_gpu;\n"
+           "    {\n"
+           "      std::lock_guard<std::mutex> tt_lock(tt_tex_gpu_mutex);\n"
+           "      tt_gpu = tt_tex_gpu_dirty.erase(&texture) != 0;\n"
+           "    }\n"
+           "    if (tt_gpu) __atomic_fetch_add(&tt_tex_stats[2], 1, __ATOMIC_RELAXED);\n"
+           "    if (tt_hash_on) {\n"
+           "      memory::Memory& tt_mem = shared_memory().memory();\n"
+           "      const TextureKey tt_key = texture.key();\n"
+           "      uint64_t tt_hb = 0, tt_hm = 0;\n"
+           "      if (load_base && texture.GetGuestBaseSize()) {\n"
+           "        tt_hb = XXH3_64bits(tt_mem.TranslatePhysical(uint32_t(tt_key.base_page) << 12), texture.GetGuestBaseSize());\n"
+           "        __atomic_fetch_add(&tt_tex_stats[3], uint64_t(texture.GetGuestBaseSize()), __ATOMIC_RELAXED);\n"
+           "      }\n"
+           "      if (load_mips && texture.GetGuestMipsSize()) {\n"
+           "        tt_hm = XXH3_64bits(tt_mem.TranslatePhysical(uint32_t(tt_key.mip_page) << 12), texture.GetGuestMipsSize());\n"
+           "        __atomic_fetch_add(&tt_tex_stats[3], uint64_t(texture.GetGuestMipsSize()), __ATOMIC_RELAXED);\n"
+           "      }\n"
+           "      auto tt_it = tt_states.find(&texture);\n"
+           "      const bool tt_known = tt_it != tt_states.end() &&\n"
+           "                            std::memcmp(&tt_it->second.key, &tt_key, sizeof(TextureKey)) == 0;\n"
+           "      if (!tt_gpu && tt_known &&\n"
+           "          (!load_base || (tt_it->second.has_base && tt_it->second.base == tt_hb)) &&\n"
+           "          (!load_mips || (tt_it->second.has_mips && tt_it->second.mips == tt_hm))) {\n"
+           "        __atomic_fetch_add(&tt_tex_stats[1], 1, __ATOMIC_RELAXED);\n"
+           "        return true;  // same bytes as the last load: the GPU copy is still right\n"
+           "      }\n"
+           "      TtTexState& tt_st = tt_states[&texture];\n"
+           "      if (!tt_known) tt_st = TtTexState{};\n"
+           "      tt_st.key = tt_key;\n"
+           "      if (load_base) { tt_st.base = tt_hb; tt_st.has_base = !tt_gpu; }\n"
+           "      if (load_mips) { tt_st.mips = tt_hm; tt_st.has_mips = !tt_gpu; }\n"
+           "    }\n"
+           "  }\n" + old)
+    if t.count(old) != 1:
+        sys.exit("texture hash: load point not found")
+    t = t.replace(old, new, 1)
+    ns = t.find("\nnamespace")
+    t = (t[:ns] + "\n// tt-android patch 36\nextern std::mutex tt_tex_gpu_mutex;\n"
+         "extern std::unordered_set<const void*> tt_tex_gpu_dirty;\n"
+         "extern \"C\" __attribute__((visibility(\"default\"))) uint64_t tt_tex_stats[4] = {};\n" + t[ns:])
+    for inc in ("#include <mutex>", "#include <unordered_set>", "#include <unordered_map>",
+                "#include <string_view>", "#include <cstring>", "#include <rex/hash.h>"):
+        if inc not in t:
+            t = t.replace("#include <cstdint>", "#include <cstdint>\n" + inc, 1)
+    tc.write_text(t)
+    changed.append("skip re-converting textures whose bytes didn't change (TT_TEX_HASH)")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).

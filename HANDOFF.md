@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v54**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v55**).
 
 ---
 
@@ -140,8 +140,9 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | (no build) | Qualcomm proprietary driver v863.1 | ~25 FPS + graphical errors; the per-frame GPU gap is there too (~21 ms) → not Turnip-specific |
 | v51 | Timeline records the real `vkQueueSubmit` (event 15) | Batches reach the driver ~50 ms before the GPU starts them (queue 4 deep), and **kgsl reports the GPU 99% busy at its top clock (680 MHz)** in rallies → the game **is GPU-bound**; Vulkan timestamps undercount (~13 of ~26 ms/frame). Earlier "4% @ 615 MHz" readings were stale |
 | v52 | "Skip texture reloads (test)": each texture loaded only once | Screen blank, menus invisible → unplayable, no measurement |
-| **v53/v54** | "Fewer texture reloads (test)": first load normal, then only every 4th reload (`TT_SKIP_TEXTURE_RELOADS=1`) | **Not tested yet** |
+| v53 | "Fewer texture reloads (test)": first load normal, then only every 4th reload | Rallies **~38 → ~43 FPS** (choppy, textures popping); compute dispatches halved → texture re-conversion is a real share of the GPU load |
 | v54 | Launcher cleanup: removed Turnip mode, Fast memory watch (always on), Frames queued, Sync test (buffer skip), 540p, 30/20 Hz screen tests, retired experiments/pacing/occlusion. The only test row is **Performance test** (Off / Fewer texture reloads). Return-to-start pop-up restyled like the start screen | — |
+| **v55** | **Texture hash skip**: on a reload caused only by CPU writes, hash the guest bytes (XXH3) and skip the GPU re-conversion if unchanged since the last load; GPU-written (resolved) textures always reload (`TT_TEX_HASH=off`). Profile line `texture loads per frame: asked / skipped / GPU-written / MB hashed`. Launcher: Performance test row removed; Play's green focus box removed | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -204,7 +205,7 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 - Give one command per build (`git pull && bash stage2/tt_android_stage2.sh`) and a short,
   concrete test: which launcher settings, ~2 minutes of rallies, export logs, report the FPS.
 - Baseline settings for comparisons (v54 launcher): **GPU driver Turnip Gen8 V38, 720p, FXAA,
-  60 FPS, Shaders Wait, Game MSAA Off, Performance test Off, Performance log On.** Retired
+  60 FPS, Shaders Wait, Game MSAA Off, Performance log On.** Retired
   options are still env toggles natively (TU_DEBUG, TT_FRAMES_IN_FLIGHT, TT_UI_HZ, ...) but
   no longer in the launcher. Keep the launcher lean: remove test rows once a test is done.
 - Menu stutter on page changes is shader compilation. The cache persists across builds
