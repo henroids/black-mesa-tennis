@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Switch this folder to an earlier build (or back to the latest), then build as usual.
 #
-#   bash tools/use_version.sh 61        # go to build v61
-#   bash tools/use_version.sh latest    # back to the newest build
-#   bash stage2/tt_android_stage2.sh    # then build
+#   bash tools/use_version.sh 61        # go to build v61, then build as usual
+#   git checkout main && git pull       # back to the newest build (older builds don't have
+#                                       # this script, so use git directly to come back)
 #
 # Builds from v56 on build cleanly this way. Older ones (v55 and earlier) expected an SDK
 # patched in place by the builds before them; to go back that far, re-run stage 1 first.
@@ -25,4 +25,5 @@ commit=$(git log origin/main --format='%h %s' | grep -E "^[0-9a-f]+ v${want}([: 
 git checkout -q "$commit"
 echo "Now on build v$want ($commit): $(git log -1 --format=%s | cut -c1-70)"
 [ "$want" -ge 56 ] 2>/dev/null || echo "Note: builds before v56 may need stage 1 re-run first."
-echo "Build it with: bash stage2/tt_android_stage2.sh   (back to newest: bash tools/use_version.sh latest)"
+echo "Build it with: bash stage2/tt_android_stage2.sh"
+echo "Back to the newest build later: git checkout main && git pull"

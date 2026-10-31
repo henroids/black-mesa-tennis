@@ -52,8 +52,8 @@ test showed, and where things stand now. Last updated 2026-11-01 (build **v67**)
   a patch really removes it, and unchanged files keep their timestamps (incremental rebuild).
 - Commits are made by the assistant and pushed; the owner only pulls and builds.
 - **Going back to an earlier build:** `bash tools/use_version.sh 61` checks out the commit
-  for that version (found by its commit message `v61: ...`); `bash tools/use_version.sh latest`
-  returns to main. Then build as usual. Builds from **v56** on rebuild cleanly (fresh SDK
+  for that version (found by its commit message `v61: ...`); `git checkout main && git pull`
+  returns to the newest (older builds don't contain the script). Then build as usual. Builds from **v56** on rebuild cleanly (fresh SDK
   sources); ≤ v55 expected an SDK patched in place, so re-run stage 1 first for those.
   (Git tags can't be pushed from the assistant's environment, hence the script.)
 
