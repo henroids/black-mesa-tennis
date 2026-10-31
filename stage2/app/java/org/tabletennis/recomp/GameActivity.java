@@ -111,29 +111,22 @@ public final class GameActivity extends SDLActivity {
 
     // ------------------------------------------------------------ return to start screen
 
-    private boolean selectHeld, startHeld, selectUsedInCombo;
+    private boolean selectHeld, startHeld, thumbLHeld, thumbRHeld;
     private android.app.Dialog quitDialog;
 
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         int code = event.getKeyCode();
         boolean down = event.getAction() == android.view.KeyEvent.ACTION_DOWN;
-        if (code == android.view.KeyEvent.KEYCODE_BUTTON_START) {
-            startHeld = down;
-            if (down && selectHeld) selectUsedInCombo = true;
+        if (code == android.view.KeyEvent.KEYCODE_BUTTON_SELECT) selectHeld = down;
+        if (code == android.view.KeyEvent.KEYCODE_BUTTON_START) startHeld = down;
+        // Both stick buttons (L3 + R3) together: screenshot. Each press still reaches the game.
+        if (code == android.view.KeyEvent.KEYCODE_BUTTON_THUMBL) {
+            if (down && event.getRepeatCount() == 0 && thumbRHeld) takeScreenshot();
+            thumbLHeld = down;
         }
-        if (code == android.view.KeyEvent.KEYCODE_BUTTON_SELECT) {
-            if (down && event.getRepeatCount() == 0) {
-                selectHeld = true;
-                selectUsedInCombo = startHeld;
-            } else if (!down) {
-                // Select on its own (released without Start): screenshot. The press still
-                // reaches the game below, so nothing changes for it.
-                if (selectHeld && !selectUsedInCombo
-                        && (quitDialog == null || !quitDialog.isShowing())) {
-                    takeScreenshot();
-                }
-                selectHeld = false;
-            }
+        if (code == android.view.KeyEvent.KEYCODE_BUTTON_THUMBR) {
+            if (down && event.getRepeatCount() == 0 && thumbLHeld) takeScreenshot();
+            thumbRHeld = down;
         }
         if (quitDialog == null || !quitDialog.isShowing()) {
             if (down && selectHeld && startHeld) {
@@ -151,7 +144,7 @@ public final class GameActivity extends SDLActivity {
 
     @Override public void onBackPressed() { showQuitDialog(); }
 
-    // ------------------------------------------------------------ screenshots (press Select)
+    // ------------------------------------------------------------ screenshots (L3 + R3)
 
     private final android.os.Handler shotHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 

@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v65**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v66**).
 
 ---
 
@@ -149,6 +149,7 @@ were removed in v56; the history table below says what each experiment found.
 | **v63/v64** | Test row skips one pass type at a time: A = 1280 no-colour/no-depth (~96), B = 640 colour (~73), C = 320 colour+depth (~33) | **Not tested yet** |
 | v64 | In game: **hold Back 0.6 s = screenshot** (PixelCopy of the SDL surface → Pictures/TableTennis/tt_<date>_<time>.png, toast confirms); tap Back still opens the return-to-start pop-up | — |
 | v65 | Screenshot moved to **Select** (press and release on its own; Select+Start still opens the pop-up; the press still reaches the game). Back is tap-only again (owner's Back-hold closes apps system-wide) | — |
+| v66 | Screenshot moved to **L3 + R3** (both stick buttons): Select changes the camera in game, and Android never delivers the Home key to apps. Select is untouched again | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
