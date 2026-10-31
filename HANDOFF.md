@@ -51,11 +51,11 @@ test showed, and where things stand now. Last updated 2026-11-01 (build **v67**)
   apply exactly once to unmodified sources (no idempotency guards or repair steps), removing
   a patch really removes it, and unchanged files keep their timestamps (incremental rebuild).
 - Commits are made by the assistant and pushed; the owner only pulls and builds.
-- **Every version is a git tag** (`v30` … latest). To build an older version:
-  `git fetch --tags && git checkout v61 && bash stage2/tt_android_stage2.sh`, and back with
-  `git checkout main`. Versions from **v56** on build cleanly this way (fresh SDK sources).
-  Older ones (≤ v55) expect an SDK patched in place by earlier builds and may not build or
-  behave right; to really go back that far, re-run stage 1 first.
+- **Going back to an earlier build:** `bash tools/use_version.sh 61` checks out the commit
+  for that version (found by its commit message `v61: ...`); `bash tools/use_version.sh latest`
+  returns to main. Then build as usual. Builds from **v56** on rebuild cleanly (fresh SDK
+  sources); ≤ v55 expected an SDK patched in place, so re-run stage 1 first for those.
+  (Git tags can't be pushed from the assistant's environment, hence the script.)
 
 ### Branches (read this first)
 - **`copilot`**: **your branch.** Commit and push all your work here. It started as an exact
@@ -155,7 +155,7 @@ were removed in v56; the history table below says what each experiment found.
 | v64 | In game: **hold Back 0.6 s = screenshot** (PixelCopy of the SDL surface → Pictures/TableTennis/tt_<date>_<time>.png, toast confirms); tap Back still opens the return-to-start pop-up | — |
 | v65 | Screenshot moved to **Select** (press and release on its own; Select+Start still opens the pop-up; the press still reaches the game). Back is tap-only again (owner's Back-hold closes apps system-wide) | — |
 | v66 | Screenshot moved to **L3 + R3** (both stick buttons): Select changes the camera in game, and Android never delivers the Home key to apps. Select is untouched again | — |
-| **v67** | **F11**: pass A skipped permanently; test row and pass census removed. Every version is now a git tag (`v30`…`v67`) | **Not tested yet** (expect ~43.5) |
+| **v67** | **F11**: pass A skipped permanently; test row and pass census removed. `tools/use_version.sh <n>` switches to any earlier build | **Not tested yet** (expect ~43.5) |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
