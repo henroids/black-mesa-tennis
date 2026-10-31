@@ -1888,6 +1888,23 @@ if "patch 36" not in t:
     tc.write_text(t)
     changed.append("skip re-converting textures whose bytes didn't change (TT_TEX_HASH)")
 
+# ---- 37. v55 build fix: SharedMemory::memory() is protected. Add a public accessor for the
+#          texture hash (patch 36) and use it.
+sh = sdk / "include/rex/graphics/shared_memory.h"
+h = sh.read_text()
+if "tt_guest_memory" not in h:
+    old = "class SharedMemory {\n public:\n"
+    if h.count(old) != 1:
+        sys.exit("shared memory header: class anchor not found")
+    h = h.replace(old, old + "  // tt-android (patch 37): guest memory, for the texture hash\n"
+                             "  memory::Memory& tt_guest_memory() const { return memory_; }\n")
+    sh.write_text(h)
+t = tc.read_text()
+if "shared_memory().memory();" in t:
+    t = t.replace("shared_memory().memory();", "shared_memory().tt_guest_memory();")
+    tc.write_text(t)
+    changed.append("texture hash uses a public guest-memory accessor")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).
