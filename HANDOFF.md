@@ -202,6 +202,10 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 
 ## 8. Communication notes for the owner
 
+- **Clean up as you go (owner's standing rule).** When an experiment is finished, remove its code,
+  env switches, launcher rows and counters in the same build that reports the result. Keep only
+  fixes that measurably help and the diagnostics we actually read. Don't let dead code pile up.
+
 - Give one command per build (`git pull && bash stage2/tt_android_stage2.sh`) and a short,
   concrete test: which launcher settings, ~2 minutes of rallies, export logs, report the FPS.
 - Baseline settings for comparisons (v54 launcher): **GPU driver Turnip Gen8 V38, 720p, FXAA,
