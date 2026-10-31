@@ -111,14 +111,30 @@ public final class GameActivity extends SDLActivity {
 
     // ------------------------------------------------------------ return to start screen
 
-    private boolean selectHeld, startHeld;
+    private boolean selectHeld, startHeld, selectUsedInCombo;
     private android.app.Dialog quitDialog;
 
     @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         int code = event.getKeyCode();
         boolean down = event.getAction() == android.view.KeyEvent.ACTION_DOWN;
-        if (code == android.view.KeyEvent.KEYCODE_BUTTON_SELECT) selectHeld = down;
-        if (code == android.view.KeyEvent.KEYCODE_BUTTON_START) startHeld = down;
+        if (code == android.view.KeyEvent.KEYCODE_BUTTON_START) {
+            startHeld = down;
+            if (down && selectHeld) selectUsedInCombo = true;
+        }
+        if (code == android.view.KeyEvent.KEYCODE_BUTTON_SELECT) {
+            if (down && event.getRepeatCount() == 0) {
+                selectHeld = true;
+                selectUsedInCombo = startHeld;
+            } else if (!down) {
+                // Select on its own (released without Start): screenshot. The press still
+                // reaches the game below, so nothing changes for it.
+                if (selectHeld && !selectUsedInCombo
+                        && (quitDialog == null || !quitDialog.isShowing())) {
+                    takeScreenshot();
+                }
+                selectHeld = false;
+            }
+        }
         if (quitDialog == null || !quitDialog.isShowing()) {
             if (down && selectHeld && startHeld) {
                 selectHeld = startHeld = false;
@@ -126,14 +142,7 @@ public final class GameActivity extends SDLActivity {
                 return true;
             }
             if (code == android.view.KeyEvent.KEYCODE_BACK) {
-                // Tap: return-to-start pop-up. Hold (0.6 s): screenshot.
-                if (down && event.getRepeatCount() == 0) {
-                    backHeldForShot = false;
-                    shotHandler.postDelayed(holdForShot, 600);
-                } else if (!down) {
-                    shotHandler.removeCallbacks(holdForShot);
-                    if (!backHeldForShot) showQuitDialog();
-                }
+                if (down && event.getRepeatCount() == 0) showQuitDialog();
                 return true;
             }
         }
@@ -142,14 +151,9 @@ public final class GameActivity extends SDLActivity {
 
     @Override public void onBackPressed() { showQuitDialog(); }
 
-    // ------------------------------------------------------------ screenshots (hold Back)
+    // ------------------------------------------------------------ screenshots (press Select)
 
     private final android.os.Handler shotHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private boolean backHeldForShot;
-    private final Runnable holdForShot = () -> {
-        backHeldForShot = true;
-        takeScreenshot();
-    };
 
     /** Copies the game surface and saves it to Pictures/TableTennis (shows in the gallery). */
     private void takeScreenshot() {
