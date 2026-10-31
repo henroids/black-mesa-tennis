@@ -513,4 +513,37 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
+# ========================================================= TEMPORARY TEST ROUND (v62)
+# Remove this section once the round's results are in (HANDOFF: clean up as you go).
+
+# ---- T1 Pass census, to find the real shadows and other heavy passes: every draw is counted
+#      under its render-target setup (surface pitch, colour format of target 0, whether it
+#      writes colour, whether it writes depth). tt_pass_census: 24 x {key, draws}.
+edit(CP, (
+    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
+    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                     : 0)) {  // tt-android F10: unused depth-only passes\n",
+    "  {  // tt-android T1: pass census\n"
+    "    const uint32_t tt_writes_color =\n"
+    "        pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets()) : 0;\n"
+    "    const uint64_t tt_key = uint64_t(regs.Get<reg::RB_SURFACE_INFO>().surface_pitch) |\n"
+    "                            (uint64_t(regs.Get<reg::RB_COLOR_INFO>().color_format) << 16) |\n"
+    "                            (uint64_t(tt_writes_color != 0) << 20) |\n"
+    "                            (uint64_t(normalized_depth_control.z_enable &&\n"
+    "                                      normalized_depth_control.z_write_enable) << 21);\n"
+    "    for (int i = 0; i < 24; ++i) {\n"
+    "      uint64_t& slot = tt_pass_census[i * 2];\n"
+    "      if (slot == 0) slot = tt_key | (uint64_t(1) << 40);\n"
+    "      if ((slot & ~(uint64_t(1) << 40)) == tt_key) {\n"
+    "        __atomic_fetch_add(&tt_pass_census[i * 2 + 1], 1, __ATOMIC_RELAXED);\n"
+    "        break;\n"
+    "      }\n"
+    "    }\n"
+    "  }\n"
+    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
+    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                     : 0)) {  // tt-android F10: unused depth-only passes\n"),
+    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_pass_census[48] = {};  // T1\n')
+done.append("T1 test: render-pass census")
+
 print("\n".join(done))

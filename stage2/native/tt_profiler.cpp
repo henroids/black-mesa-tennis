@@ -515,6 +515,24 @@ void RunProfiler(std::string dir) {
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
+          if (const uint64_t* pc = FindStats("tt_pass_census")) {  // TEMPORARY test round (v62)
+            static uint64_t pc_prev[48] = {};
+            std::vector<std::pair<double, uint64_t>> passes;
+            for (int i = 0; i < 24 && pc[i * 2]; ++i) {
+              const double d = (pc[i * 2 + 1] - pc_prev[i * 2 + 1]) / swaps;
+              if (d >= 0.5) passes.emplace_back(d, pc[i * 2]);
+            }
+            std::sort(passes.begin(), passes.end(), [](auto& a, auto& b) { return a.first > b.first; });
+            std::fprintf(f, "draws per frame by render setup (pitch / colour format / writes):\n");
+            for (auto& [d, key] : passes) {
+              std::fprintf(f, "  %7.1f  pitch %4llu  format %2llu  %s%s\n", d,
+                           static_cast<unsigned long long>(key & 0x3FFF),
+                           static_cast<unsigned long long>((key >> 16) & 0xF),
+                           (key >> 20) & 1 ? "colour" : "no colour",
+                           (key >> 21) & 1 ? " + depth" : "");
+            }
+            std::memcpy(pc_prev, pc, sizeof pc_prev);
+          }
           if (tex) {
             auto per = [&](int i) { return (tex[i] - tex_prev[i]) / swaps; };
             std::fprintf(f, "texture loads per frame: %.1f asked, %.1f skipped (bytes unchanged), "

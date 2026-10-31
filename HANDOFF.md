@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v61**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v62**).
 
 ---
 
@@ -145,6 +145,7 @@ were removed in v56; the history table below says what each experiment found.
 | v59 | Game MSAA launcher row removed: always 1 sample (the v57 round's last four runs had it flipped On by accident, ~30 FPS); `TT_GAME_MSAA` switch removed | — |
 | v60 | Test: skip depth passes 640 + 1120 together | Off 40.6 → **42.8 FPS (+2.2)**; screenshots matched (table and player shadows still drawn) |
 | **v61** | **F10**: those two depth-only passes skipped permanently; Test row and depth-pitch counters removed | **Not tested yet** (expect ~42–43) |
+| **v62** | Test round: render-pass census in the profile (draws per frame by pitch / colour format / colour+depth writes) to find the real shadows; Test row "Turnip sysmem"; AA Off via the normal row | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
