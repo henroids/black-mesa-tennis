@@ -1,54 +1,194 @@
-# black-mesa-tennis
+<p align="center">
+  <img src="assets/icon.png" width="128" alt="black-mesa-tennis icon (pixel table-tennis paddle)">
+</p>
 
-Android port of *Rockstar Games presents Table Tennis* (Xbox 360), built from the
-community static recompilation and the ReXGlue runtime, tuned for the AYN Thor
-(Snapdragon 8 Gen 2 / Adreno 740). Personal-use fan project — **no game files are
-included**; you build from your own disc image.
+<h1 align="center">black-mesa-tennis</h1>
 
-## What's here
+<p align="center">
+  An unofficial native <b>Android (ARM64)</b> port of <i>Rockstar Games presents Table Tennis</i> (Xbox 360),<br>
+  built from the community static recompilation and tuned for Snapdragon handhelds such as the <b>AYN Thor</b>.
+</p>
 
-| Folder | What it is |
+> [!IMPORTANT]
+> **This repository contains no game code, data or assets, and never will.**
+> You need **your own legally obtained retail copy** of the game, as a disc image (ISO) made from
+> your own disc. The build scripts read that ISO on your own computer and turn it into an APK for
+> **your own device**. Please don't ask for, link to or share ISOs, and **don't share the APK you
+> build**: it contains data from your copy of the game. This project doesn't support piracy in
+> any form.
+
+---
+
+## Contents
+- [Status](#status)
+- [What you need](#what-you-need)
+- [Building the APK](#building-the-apk)
+- [Installing and first launch](#installing-and-first-launch)
+- [Recommended settings](#recommended-settings)
+- [Settings guide (what each option does)](#settings-guide)
+- [Controls](#controls)
+- [Known issues](#known-issues)
+- [Reporting problems](#reporting-problems)
+- [Repository layout](#repository-layout)
+- [Credits and license](#credits-and-license)
+
+## Status
+
+Playable, and still being optimised. Measured on an **AYN Thor** (Snapdragon 8 Gen 2 / Adreno 740)
+with the recommended settings below:
+
+| Part of the game | Frame rate |
 |---|---|
-| `stage1/` | One-time setup: installs the Android SDK/NDK, fetches the ReXGlue SDK and the PC port, checks your ISO, recompiles the game code and builds the native libraries. 1–2 hours. |
-| `stage2/` | Builds the installable APK: applies the SDK fixes, the game MSAA edit, the profiler, and packages the Android app (launcher, settings, driver manager, log export). |
-| `tools/` | `pixel_crt.py`, a batch pixel-grid photo filter (unrelated helper). |
+| Menus, character select | ~57–60 FPS |
+| Rallies (720p, FXAA) | ~43–44 FPS |
+| Rallies (720p, anti-aliasing Off) | ~44–45 FPS |
 
-## Building (Windows 11 + WSL2 Ubuntu 24.04)
+The target is a steady 60 FPS in matches. During rallies the GPU is the limit (it runs at 99% at
+its top clock), so progress now comes from many small reductions in GPU work; see
+[HANDOFF.md](HANDOFF.md) for the full history of what was tried and measured.
 
-1. Install WSL: `wsl --install -d Ubuntu-24.04` in an admin PowerShell, reboot, pick a user name.
-2. In Ubuntu, get this repo: `git clone https://github.com/henroids/black-mesa-tennis ~/black-mesa-tennis`
-   (private repo: sign in when asked, or use a personal access token).
-3. Stage 1 (once): `bash ~/black-mesa-tennis/stage1/tt_android_stage1.sh "/mnt/c/path/to/TableTennis.iso"`
-4. Stage 2 (after every update): `cd ~/black-mesa-tennis && git pull && bash stage2/tt_android_stage2.sh`
-   The APK is copied to your Windows Downloads folder as `TableTennis.apk`.
+Other Android devices with a recent Adreno GPU may work but haven't been tested.
 
-If a stage fails, it says which log zip to look at (`~/tt-android/tt-stage1-logs.zip` or
-`tt-stage2-logs.zip`). They contain logs only, no game files.
+## What you need
 
-## On the device
+**Game**
+- Your own retail **Xbox 360** disc image (`.iso`) of *Rockstar Games presents Table Tennis*,
+  **USA or Europe** release (Title ID `545407DF`). The ISO is checked before anything is built,
+  and other versions are rejected. It is only ever read, never modified.
 
-- **Start screen**: Play, game disc import, resolution, anti-aliasing, frame rate,
-  GPU driver (import AdrenoTools/Turnip packages), Turnip mode, **Game MSAA**
-  (Off = single-tile rendering, much faster), performance log, export logs, quit.
-- **In game**: Select+Start (or Back) returns to the start screen.
-- **Export logs** writes a zip with the runtime log, CPU/thread monitor, the sampling
-  profile (`profile.txt`) and a device report.
+**A computer to build on**
+- **Windows 10/11 with WSL2** (Ubuntu 24.04), or Ubuntu 24.04 directly.
+- An internet connection for the first build (it downloads the Android SDK/NDK and the
+  open-source projects listed under [Credits](#credits-and-license)).
+- Plenty of free disk space (20 GB or more is comfortable) and 1–2 hours for the first build.
 
-## Performance notes so far
+**A device to play on**
+- Android 10 or newer, ARM64, with Vulkan.
+- Developed and tuned on the AYN Thor (Snapdragon 8 Gen 2). A controller is required (built-in
+  controls on handhelds work).
+- Recommended: a **Turnip** GPU driver package (see [Recommended settings](#recommended-settings)).
 
-| Change | Effect |
+## Building the APK
+
+Short version (details and troubleshooting in [docs/BUILDING.md](docs/BUILDING.md)):
+
+1. **Windows only:** install WSL with Ubuntu. In an *administrator* PowerShell:
+   `wsl --install -d Ubuntu-24.04`, reboot, and pick a user name and password.
+2. In the **Ubuntu** window, get this repository:
+   ```bash
+   git clone https://github.com/henroids/black-mesa-tennis ~/black-mesa-tennis
+   ```
+3. **Stage 1 (once):** point it at your ISO. A Windows path like `C:\Games\TableTennis.iso`
+   becomes `/mnt/c/Games/TableTennis.iso`. Keep the quotes:
+   ```bash
+   bash ~/black-mesa-tennis/stage1/tt_android_stage1.sh "/mnt/c/Games/TableTennis.iso"
+   ```
+   This sets up the toolchain, checks your ISO and recompiles the game code (1–2 hours).
+4. **Stage 2 (every time you update):**
+   ```bash
+   cd ~/black-mesa-tennis && git pull && bash stage2/tt_android_stage2.sh
+   ```
+   The finished `TableTennis.apk` is copied to your Windows **Downloads** folder.
+
+If a stage fails, it says so and leaves a log zip (`~/tt-android/tt-stage1-logs.zip` or
+`tt-stage2-logs.zip`). Those contain build logs only, no game files.
+
+## Installing and first launch
+
+1. Copy `TableTennis.apk` to your device and install it (allow installs from your file manager
+   if Android asks).
+2. Open **Table Tennis**. You'll see the start screen (black, pixel font).
+3. **Game disc → Choose**, and pick your ISO on the device. It is copied into the app's own folder
+   once (keep the screen on until it says *Disc ready*).
+4. *(Recommended)* **Import driver**, pick a Turnip driver package (`.zip` / `.adpkg`), and select it
+   under **GPU driver**.
+5. Choose **Play**. The first time you visit each screen, there's a short stutter while shaders
+   are prepared. They're kept for later sessions, so it settles down after one pass through the
+   menus.
+
+## Recommended settings
+
+| Setting | Recommended | Notes |
+|---|---|---|
+| Resolution | **720p** | The game's native resolution |
+| Anti-aliasing | **FXAA** (or **Off** for ~+1.3 FPS) | Off shows more jagged edges |
+| Frame rate | **60 FPS** | The game's own rate |
+| Shaders | **Wait (complete)** | No missing objects; brief stutter on new screens only |
+| Shader threads | **4** | |
+| GPU driver | **Turnip Gen8 V38** | From [StevenMXZ/Adreno-Tools-Drivers](https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases) (`Turnip_Gen8_V38.zip`) |
+| Hidden passes | **Skipped (faster)** | Switch to *Drawn* if something looks wrong (see below) |
+| Performance log | Off for normal play, **On** when reporting a problem | |
+
+## Settings guide
+
+What to expect from each option, measured on the AYN Thor during rallies (FPS differences are
+approximate, compared with the recommended settings):
+
+| Setting | Options | Effect on playability and frame rate |
+|---|---|---|
+| **Resolution** | 720p · 1440p (2×) | 1440p renders at twice the width and height: sharper, but much heavier, so expect a large FPS drop. |
+| **Anti-aliasing** | Off · FXAA · FXAA (extreme) | Edge smoothing applied to the final image. **Off ≈ +1.3 FPS**. *Extreme* is smoother and a little heavier than FXAA. |
+| **Frame rate** | 60 FPS · 30 FPS · Uncapped | 60 is the game's own target. **30** caps the game at 30, which should feel steadier if you prefer consistency over the ~43 FPS average. *Uncapped* is for testing only. |
+| **Show FPS** | Off · On | Small FPS counter in the corner. No real cost. |
+| **Shaders** | Async · Wait | *Wait*: everything is drawn correctly, with a brief stutter the first time a screen appears. *Async*: fewer stutters, but objects can pop in for a moment. |
+| **Shader threads** | 2 · 4 · 6 | Threads used to prepare shaders (affects first-visit stutter, not match FPS). |
+| **GPU driver** | System · imported drivers | Turnip Gen8 V38 ≈ +2 FPS over older Turnip builds. Qualcomm's own drivers measured slower (~25 FPS) with graphical errors. |
+| **Hidden passes** | Skipped · Drawn | Skips three rendering passes that had no visible effect in testing (**≈ +2.5 FPS**). They were only checked in some venues and modes, so if anything looks wrong, set **Drawn** and compare, and please report it. |
+| **Performance log** | Off · On | Records a performance profile for problem reports. Leave it off for normal play. |
+
+Always on (not settings): single-sample rendering instead of the game's 4× MSAA (the biggest single
+speed-up), and a set of emulator fixes listed at the top of
+[`stage2/native/patch_sdk_vulkan_fixes.py`](stage2/native/patch_sdk_vulkan_fixes.py).
+
+## Controls
+
+The game uses a controller, mapped like an Xbox 360 pad. Extra shortcuts while playing:
+
+| Buttons | Action |
 |---|---|
-| Write-watch fault path without `/proc/self/maps` parsing (#441) | ~+30% |
-| Texture exponent bias from fetch word 3 (#456) | skin/textures render correctly |
-| Audio worker multi-wait no longer busy-spins | frees a full CPU core |
-| Game MSAA off → one EDRAM tile instead of 2–3 | 20 → ~29 FPS |
-| Fence status queries cost ~13 ms each on KGSL drivers (v29 measurement) | v30: GPU progress from a memory marker → ~36 FPS |
-| Presenter fence tracker hit the same slow query on every swap (v30 profile) | v31: young fences aren't queried (tracker cost ~0) |
-| GPU command thread painted the screen itself and waited for the display refresh every frame (v31 profile) | v32: present from the UI thread |
-| UI thread's present held the shared GPU queue ~15 ms; command thread waited ~22 ms/frame for it (v33) | v34: present without semaphores (queue-lock wait → 0) |
-| Host side idle, game still ~33 FPS: suspect the game paces on the 60 Hz guest vblank interrupt | v35: ruled out (240 Hz vblank changed nothing) |
-| No sampler overflows; GPU command thread waits ~16 ms/frame for the GPU while our own work is ~10 ms (v36) | v37: test whether 60 Hz screen redraws compete for the GPU |
+| **Back** (tap), or **Select + Start** | Return-to-start-screen pop-up (D-pad to choose, A to confirm, B to keep playing) |
+| **L3 + R3** (press both sticks) | Screenshot, saved to `Pictures/TableTennis` with the date and time in the name |
+| **Select** | The game's own camera button |
 
-## License
+## Known issues
 
-GPL-3.0 (see `LICENSE`); credits and third-party licenses in `NOTICE.md`.
+- Matches run at ~43–45 FPS rather than 60 on the AYN Thor; work continues.
+- Brief stutters the first time each screen loads (shader preparation; cached afterwards).
+- *Hidden passes: Skipped* has only been checked in a few venues and modes. If something looks
+  off, try *Drawn*.
+
+## Reporting problems
+
+Open an issue with:
+1. what happened and where (venue, characters, mode), plus a screenshot (L3 + R3);
+2. the log zip from the start screen: **Performance log → On**, reproduce, then **Export logs**.
+   It contains logs and a device report only, no game files.
+
+Please don't attach ISOs, APKs or other game files.
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `stage1/` | One-time setup: toolchain, ISO check, game recompilation |
+| `stage2/` | Builds the APK: emulator fixes (`native/`), the Android app and launcher (`app/`) |
+| `tools/use_version.sh` | Switch to an earlier build (`bash tools/use_version.sh 61`) |
+| `tools/pixel_crt.py` | Unrelated helper (photo filter) |
+| `assets/` | Images for this README (original artwork, no game assets) |
+| `docs/BUILDING.md` | Detailed build steps, updating, troubleshooting |
+| `HANDOFF.md` | Developer notes: every change, what it measured, current bottleneck |
+| `NOTICE.md`, `LICENSE` | Credits and licenses |
+
+## Credits and license
+
+Built on the work of:
+- **[Table-Tennis-Rockstar-PC](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC)** by davidptrssvea: the PC static recompilation this port is based on (MIT).
+- **[ReXGlue SDK](https://github.com/rexglue/rexglue-sdk)**: the recompiler and runtime (derived from the Xenia project).
+- **[MCLA Android port](https://github.com/gabrielbskk/mcla-recomp-android-g)**: Android build layout and custom driver loading (GPL-3.0).
+- **[libadrenotools](https://github.com/bylaws/libadrenotools)**, **SDL3**, and the **GamePocket** font (SIL OFL).
+
+This repository is distributed under the **GPL-3.0** ([LICENSE](LICENSE)); details in [NOTICE.md](NOTICE.md).
+
+*Rockstar Games presents Table Tennis* is a trademark of its respective owners. This is an
+unofficial fan project for personal use, not affiliated with or endorsed by Rockstar Games,
+Take-Two Interactive or Microsoft.

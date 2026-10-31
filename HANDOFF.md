@@ -86,6 +86,10 @@ stage2/
     GameActivity.java          sets TT_* env vars, writes sessions.txt, archives runs
     LogExporter.java, ThreadMonitor.java, DriverManager.java, GameFiles.java
 tools/pixel_crt.py      unrelated photo filter
+tools/use_version.sh    switch to an earlier build by number
+assets/                 README images (original artwork only, never game assets)
+docs/BUILDING.md        user-facing build guide + troubleshooting
+.github/ISSUE_TEMPLATE/ problem-report template (asks for logs, forbids game files)
 ```
 
 ## 4. Diagnostics built in (how to read the logs)
@@ -240,6 +244,10 @@ Per gameplay frame (~26–28 ms, Turnip V38):
    (the MCLA port did this: shadows/blur), along with the light-shaft pass.
 
 ## 8. Communication notes for the owner
+
+- **Public-facing docs:** README.md is written for other people building the port for their own
+  device: no game files, own legally obtained ISO only, never share the APK. Keep its
+  settings guide and FPS numbers current when results change.
 
 - **Small wins count (owner, 2026-11-01).** Big jumps are unlikely now; several +0.5–1 FPS
   changes add up. Re-testing earlier ideas is welcome, since results change as other
