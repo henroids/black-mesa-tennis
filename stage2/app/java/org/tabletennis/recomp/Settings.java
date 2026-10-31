@@ -19,9 +19,9 @@ final class Settings {
     // Game MSAA: off = the game renders 1 sample in one EDRAM tile instead of drawing
     // the scene once per strip (the big GPU cost). Host FXAA still smooths edges.
     static final String[] GAME_MSAA_LABELS = {"Off (faster)", "On (as shipped)"};
-    // TEMPORARY test round (v57): one option per run; remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "No shadows", "Turnip sysmem",
-            "Turnip sysmem no-bin", "Screen 30 Hz"};
+    // TEMPORARY test round (v58): one option per run; remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Skip depth pass 1440", "Skip depth pass 640",
+            "Skip depth pass 1120", "Screen 30 Hz"};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -46,7 +46,7 @@ final class Settings {
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.gameMsaa = clamp(p.getInt("game_msaa", 0), GAME_MSAA_LABELS.length);
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v57", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v58", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -60,7 +60,7 @@ final class Settings {
                 .putInt("shader_threads", shaderThreads)
                 .putInt("game_msaa", gameMsaa)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v57", test)
+                .putInt("test_v58", test)
                 .commit();
     }
 

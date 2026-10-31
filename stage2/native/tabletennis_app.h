@@ -86,7 +86,7 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
     {
       using clock = std::chrono::steady_clock;
       static auto next_draw = clock::now();
-      // TEMPORARY test round (v57): TT_TEST=ui30 redraws the screen at 30 Hz.
+      // TEMPORARY test round (v58): TT_TEST=ui30 redraws the screen at 30 Hz.
       static const bool tt_ui30 = [] {
         const char* v = std::getenv("TT_TEST");
         return v && std::string_view(v) == "ui30";

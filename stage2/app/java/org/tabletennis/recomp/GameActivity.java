@@ -50,10 +50,10 @@ public final class GameActivity extends SDLActivity {
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
         setEnv("TT_GAME_MSAA", settings.gameMsaa == 0 ? "off" : "on");
-        // TEMPORARY test round (v57)
-        if (settings.test == 1) setEnv("TT_TEST", "noshadow");
-        if (settings.test == 2) setEnv("TU_DEBUG", "sysmem");
-        if (settings.test == 3) setEnv("TU_DEBUG", "sysmem,nobin");
+        // TEMPORARY test round (v58)
+        if (settings.test == 1) setEnv("TT_TEST", "skip1440");
+        if (settings.test == 2) setEnv("TT_TEST", "skip640");
+        if (settings.test == 3) setEnv("TT_TEST", "skip1120");
         if (settings.test == 4) setEnv("TT_TEST", "ui30");
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.

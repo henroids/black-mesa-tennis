@@ -494,36 +494,40 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v57)
+# ========================================================= TEMPORARY TEST ROUND (v58)
 # Remove this whole section once the round's results are in (HANDOFF: clean up as you go).
 
-# ---- T1 "No shadows" (TT_TEST=noshadow): skip depth-only draws into a depth buffer whose
-#      pitch isn't the 1280-pixel screen's (shadow maps; the screen's own depth pre-pass is
-#      kept). Logs each distinct skipped pitch once; skipped draws counted in tt_work_stats[8].
+# ---- T1 Depth-only passes. v57 "No shadows" (skip every depth-only draw into a depth buffer
+#      whose pitch isn't the 1280-pixel screen's) gave ~+2.5 FPS, but the visible shadows
+#      stayed, so it removed other passes: pitches 1440, 640 and 1120 were skipped. Now each
+#      pitch can be skipped on its own (TT_TEST=skip<pitch>), and depth-only draws are counted
+#      per pitch (tt_depth_pitch: 8 x {pitch, draws}) so the profile shows how heavy each is.
 edit(CP, (
     "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n",
     "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n"
-    "  {  // tt-android T1: no-shadows test\n"
-    "    static const bool tt_noshadow = [] {\n"
+    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
+    "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                     : 0)) {  // tt-android T1: depth-only draw\n"
+    "    static const uint32_t tt_skip_pitch = [] {\n"
     "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      return v && std::string_view(v) == \"noshadow\";\n"
+    "      return v && std::strncmp(v, \"skip\", 4) == 0 ? uint32_t(std::atoi(v + 4)) : 0u;\n"
     "    }();\n"
-    "    if (tt_noshadow && normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
-    "        !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
-    "                       : 0)) {\n"
-    "      const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
-    "      if (pitch != 1280) {\n"
-    "        static uint32_t logged[8] = {};\n"
-    "        for (uint32_t& l : logged) {\n"
-    "          if (l == pitch) break;\n"
-    "          if (!l) { l = pitch; REXLOG_INFO(\"tt: no-shadows test skips depth-only draws, pitch {}\", pitch); break; }\n"
-    "        }\n"
-    "        __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
-    "        return true;\n"
+    "    const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
+    "    for (int i = 0; i < 8; ++i) {\n"
+    "      uint64_t& slot = tt_depth_pitch[i * 2];\n"
+    "      if (slot == 0) slot = pitch;\n"
+    "      if (slot == pitch) {\n"
+    "        __atomic_fetch_add(&tt_depth_pitch[i * 2 + 1], 1, __ATOMIC_RELAXED);\n"
+    "        break;\n"
     "      }\n"
     "    }\n"
+    "    if (tt_skip_pitch && pitch == tt_skip_pitch) {\n"
+    "      __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
+    "      return true;\n"
+    "    }\n"
     "  }\n"),
-    includes=("#include <cstdlib>", "#include <string_view>"))
-done.append("T1 test: no shadows (TT_TEST=noshadow)")
+    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_depth_pitch[16] = {};  // T1\n',
+    includes=("#include <cstdlib>", "#include <cstring>"))
+done.append("T1 test: depth-only draws counted per pitch; TT_TEST=skip<pitch>")
 
 print("\n".join(done))
