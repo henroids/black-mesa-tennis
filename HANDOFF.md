@@ -49,7 +49,20 @@ test showed, and where things stand now. Last updated 2026-10-31 (build **v49**)
   to an *already applied* patch don't take effect unless you add a separate repair step.
   This bit us in v41: a stats array was enlarged in an existing patch, the old size stayed,
   and the overflow disabled the GPU marker (fixed in v42 with a repair block).
-- Commits are made by the assistant and pushed to `main`; the owner only pulls and builds.
+- Commits are made by the assistant and pushed; the owner only pulls and builds.
+
+### Branches (read this first)
+- **`copilot`**: **your branch.** Commit and push all your work here. It started as an exact
+  copy of `main` at build v49.
+- **`main`**: the other assistant's (Claude's) line of work. Don't push to it. Good results
+  can be merged into it later through a pull request.
+- The owner switches between them like this:
+  `git fetch && git checkout copilot && git pull && bash stage2/tt_android_stage2.sh`
+  (`git checkout main` to go back).
+- Both branches patch the **same SDK folder** on the owner's PC (`~/tt-android/...`, see
+  stage 2). An SDK patch applied by one branch stays applied after switching. Keep patches
+  idempotent and guarded by marker strings, and if a build misbehaves after a switch,
+  re-extract the SDK from the release zip and rebuild.
 
 ### Repo layout
 ```
