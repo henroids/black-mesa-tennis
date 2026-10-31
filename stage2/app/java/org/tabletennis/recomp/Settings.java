@@ -66,6 +66,9 @@ final class Settings {
     // Frames the emulator may queue on the GPU before waiting (v44 test row).
     static final String[] QUEUED_LABELS = {"3 (default)", "4", "6"};
     int queued = 0;
+    // v50 measurement: skip buffer/memory-only GPU syncs (may glitch the picture).
+    static final String[] SYNC_TEST_LABELS = {"Off", "Skip buffer syncs (test)"};
+    int syncTest = 0;
     String framesInFlight() { return queued == 1 ? "4" : queued == 2 ? "6" : null; }
     boolean uiUncapped() { return pacing == 3 || pacing == 5; }
     boolean fastWatch = true;   // skip the /proc/self/maps recheck on write-watch faults (#441)
@@ -91,6 +94,7 @@ final class Settings {
         s.pacing = clamp(p.getInt("pacing", 0), PACING_LABELS.length);
         s.gameMsaa = clamp(p.getInt("game_msaa", 0), GAME_MSAA_LABELS.length);
         s.queued = clamp(p.getInt("frames_queued", 0), QUEUED_LABELS.length);
+        s.syncTest = clamp(p.getInt("sync_test", 0), SYNC_TEST_LABELS.length);
         s.shaderDumpPath = new java.io.File(GameFiles.logsDir(context), "shaders").getAbsolutePath();
         s.perfLogPath = new java.io.File(GameFiles.logsDir(context), "perf.csv").getAbsolutePath();
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
@@ -113,6 +117,7 @@ final class Settings {
                 .putInt("pacing", pacing)
                 .putInt("game_msaa", gameMsaa)
                 .putInt("frames_queued", queued)
+                .putInt("sync_test", syncTest)
                 .putInt("shader_threads", shaderThreads)
                 .commit();
     }
@@ -131,6 +136,7 @@ final class Settings {
                 + " | Turnip mode: " + TURNIP_LABELS[turnipMode]
                 + " | Game MSAA: " + GAME_MSAA_LABELS[gameMsaa]
                 + " | Frames queued: " + QUEUED_LABELS[queued]
+                + " | Sync test: " + SYNC_TEST_LABELS[syncTest]
                 + " | Fast memory watch: " + (fastWatch ? "On" : "Off")
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }

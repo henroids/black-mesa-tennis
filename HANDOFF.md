@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-10-31 (build **v49**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v50**).
 
 ---
 
@@ -135,7 +135,8 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | v46 | Time the submission tail (marker barrier + fill) and count barriers | Tail ≈ 0.01 ms; **~1000 pipeline barriers per frame**; 540p same FPS as 720p |
 | v47 | Presenter refresh/paint/present + sparse binds on the timeline | Gap isn't caused by paint/present; no sparse binds |
 | v48 | Presenter's empty fence-only `vkQueueSubmit`s replaced by a 1-barrier command buffer | No change (~38) |
-| **v49** | **Merge back-to-back pipeline barriers** in the deferred command buffer replay (never merges two that touch the same image/buffer; `TT_MERGE_BARRIERS=off`) | **Not tested yet** |
+| v49 | Merge back-to-back pipeline barriers in the deferred command buffer replay (`TT_MERGE_BARRIERS=off`) | **0 merged**: barriers are never adjacent; ~38 FPS |
+| **v50** | Classify barriers (buffer-only / memory-only / image) + launcher **Sync test** = skip buffer/memory-only barriers (`TT_SKIP_BUFFER_BARRIERS=1`), a measurement that may glitch the picture | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -168,8 +169,8 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 
 ## 7. Suggested next steps
 
-1. **Test v49** (barrier merge). Check `pipeline barrier calls saved by merging per frame`
-   in the profile and the rally FPS. Watch for rendering errors (flicker, missing objects).
+1. **Test v50**: rally FPS with Sync test Off vs "Skip buffer syncs (test)", plus the
+   `pipeline barriers per frame by kind` line. A big FPS jump when skipping proves barrier cost.
 2. If merging saves few calls, find **where the barriers come from** (render target cache
    transitions, texture cache loads, shared-memory uploads, `SubmitBarriers`). Count per
    call site and reduce redundant ones (e.g. barriers with identical src/dst for unchanged

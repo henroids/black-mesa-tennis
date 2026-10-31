@@ -57,6 +57,7 @@ public final class GameActivity extends SDLActivity {
         if (settings.framesInFlight() != null) setEnv("TT_FRAMES_IN_FLIGHT", settings.framesInFlight());
         if (settings.uiUncapped()) setEnv("TT_UI_UNCAPPED", "1");
         setEnv("TT_GAME_MSAA", settings.gameMsaa == 0 ? "off" : "on");
+        if (settings.syncTest == 1) setEnv("TT_SKIP_BUFFER_BARRIERS", "1");
         if (settings.uiHz() != null) setEnv("TT_UI_HZ", settings.uiHz());
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.

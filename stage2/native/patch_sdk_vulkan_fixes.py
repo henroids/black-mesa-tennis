@@ -1712,6 +1712,32 @@ void Add(const ui::vulkan::VulkanDevice::Functions& dfn, VkCommandBuffer cb, VkP
     dcb.write_text(t)
     changed.append("merge back-to-back pipeline barriers")
 
+# ---- 31. v49: merging saved 0 barriers (no two are ever back to back). Classify the ~1000
+#          barriers per frame - buffer-only (shared-memory uploads etc.), memory-only, or with
+#          image transitions - and offer a diagnostic that skips the buffer/memory-only ones
+#          (TT_SKIP_BUFFER_BARRIERS=1, launcher "Sync test") to measure what they cost. That
+#          test may glitch the picture; it's a measurement, not a fix.
+#          tt_fence_stats[13] buffer-only, [14] memory-only, [15] with image barriers.
+t = dcb.read_text()
+if "tt-android: barrier classes" not in t:
+    old = ("         uint32_t nb, const VkBufferMemoryBarrier* b, uint32_t ni, const VkImageMemoryBarrier* im) {\n"
+           "  if (!enabled) {\n")
+    new = ("         uint32_t nb, const VkBufferMemoryBarrier* b, uint32_t ni, const VkImageMemoryBarrier* im) {\n"
+           "  // tt-android: barrier classes (patch 31)\n"
+           "  static const bool skip_buffer = std::getenv(\"TT_SKIP_BUFFER_BARRIERS\") != nullptr;\n"
+           "  if (ni) {\n"
+           "    __atomic_fetch_add(&tt_fence_stats[15], 1, __ATOMIC_RELAXED);\n"
+           "  } else {\n"
+           "    __atomic_fetch_add(&tt_fence_stats[nb ? 13 : 14], 1, __ATOMIC_RELAXED);\n"
+           "    if (skip_buffer) return;\n"
+           "  }\n"
+           "  if (!enabled) {\n")
+    if t.count(old) != 1:
+        sys.exit("barrier classes: Add() not found (needs 30)")
+    t = t.replace(old, new)
+    dcb.write_text(t)
+    changed.append("barrier classes + buffer-barrier skip test")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).
