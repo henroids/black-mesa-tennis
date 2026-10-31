@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v51**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v52**).
 
 ---
 
@@ -138,7 +138,8 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | v49 | Merge back-to-back pipeline barriers in the deferred command buffer replay (`TT_MERGE_BARRIERS=off`) | **0 merged**: barriers are never adjacent; ~38 FPS |
 | v50 | Classify barriers (buffer-only / memory-only / image) + launcher **Sync test** = skip buffer/memory-only barriers (`TT_SKIP_BUFFER_BARRIERS=1`) | Gameplay frame: ~900 buffer-only, 0 memory-only, ~186 image barriers. Skipping buffer barriers glitched the picture but gameplay stayed **~39 FPS** (menus 57 either way) → **barrier cost ruled out** |
 | (no build) | Qualcomm proprietary driver v863.1 | ~25 FPS + graphical errors; the per-frame GPU gap is there too (~21 ms) → not Turnip-specific |
-| **v51** | Timeline records the real `vkQueueSubmit` of each CP submission (event 15, "QUEUE SUBMIT") | **Not tested yet** |
+| v51 | Timeline records the real `vkQueueSubmit` (event 15) | Batches reach the driver ~50 ms before the GPU starts them (queue 4 deep), and **kgsl reports the GPU 99% busy at its top clock (680 MHz)** in rallies → the game **is GPU-bound**; Vulkan timestamps undercount (~13 of ~26 ms/frame). Earlier "4% @ 615 MHz" readings were stale |
+| **v52** | Launcher Sync test → "Skip texture reloads (test)" (`TT_SKIP_TEXTURE_RELOADS=1`): each texture is loaded only the first time (stale picture) to measure the ~43 MB/frame texture conversion cost | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -168,6 +169,13 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 - Other per-frame costs worth attacking: texture re-uploads (~55–70 texture loads, ~43 MB per
   frame, caused by write-watch invalidations, ~1600–2000 faults/s) and render-target
   ownership transfers in Xenia's render target cache.
+
+> **Update (v51):** the bottleneck is GPU load. The GPU is 99% busy at 680 MHz during rallies,
+> and the per-frame "gap" in the timeline is GPU work the timestamps don't capture. Note that the
+> launcher's 540p option may not lower the game's internal render resolution, so pixel cost
+> isn't fully ruled out. Next: measure categories by removing them (texture reloads first, v52),
+> then resolves/RT transfers, then game-side effects (depth-of-field blur in replays, shadows,
+> light shafts).
 
 ## 7. Suggested next steps
 

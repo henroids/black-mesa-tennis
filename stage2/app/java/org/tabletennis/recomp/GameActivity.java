@@ -58,6 +58,7 @@ public final class GameActivity extends SDLActivity {
         if (settings.uiUncapped()) setEnv("TT_UI_UNCAPPED", "1");
         setEnv("TT_GAME_MSAA", settings.gameMsaa == 0 ? "off" : "on");
         if (settings.syncTest == 1) setEnv("TT_SKIP_BUFFER_BARRIERS", "1");
+        if (settings.syncTest == 2) setEnv("TT_SKIP_TEXTURE_RELOADS", "1");
         if (settings.uiHz() != null) setEnv("TT_UI_HZ", settings.uiHz());
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.

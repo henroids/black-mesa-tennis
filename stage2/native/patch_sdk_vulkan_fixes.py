@@ -1752,6 +1752,31 @@ if "TtTimelineEvent(15," not in c:
     cp.write_text(c)
     changed.append("timeline: real vkQueueSubmit time")
 
+# ---- 34. v51 logs: kgsl reports the GPU 99% busy at its top clock (680 MHz) during rallies,
+#          so the game IS GPU-bound and the Vulkan timestamps undercount (~13 of ~26 ms).
+#          Measure what the biggest resolution-independent job costs: ~60 texture re-loads
+#          (~43 MB converted on the GPU) every frame. TT_SKIP_TEXTURE_RELOADS=1 loads each
+#          texture only the first time (later updates are ignored, so the picture will be
+#          wrong/stale). A measurement, not a fix.
+tc = sdk / "src/graphics/vulkan/texture_cache.cpp"
+t = tc.read_text()
+if "TT_SKIP_TEXTURE_RELOADS" not in t:
+    old = ("  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
+           "  TextureKey texture_key = vulkan_texture.key();\n")
+    new = ("  {  // tt-android: texture reload cost test (patch 34)\n"
+           "    static const bool tt_skip = std::getenv(\"TT_SKIP_TEXTURE_RELOADS\") != nullptr;\n"
+           "    static std::unordered_set<const void*> tt_seen;\n"
+           "    if (tt_skip && !tt_seen.insert(&texture).second) return true;\n"
+           "  }\n" + old)
+    if t.count(old) != 1:
+        sys.exit("texture reload test point not found")
+    t = t.replace(old, new, 1)
+    for inc in ("#include <unordered_set>", "#include <cstdlib>"):
+        if inc not in t:
+            t = t.replace("#include <cstdint>", "#include <cstdint>\n" + inc, 1)
+    tc.write_text(t)
+    changed.append("texture reload cost test (TT_SKIP_TEXTURE_RELOADS)")
+
 # repair (v42): v41 grew tt_fence_stats to 16 entries, but an SDK patched by an earlier
 # build kept the 8-entry definition, so patch 25's counters [8]/[9] wrote past the end
 # into the GPU-marker state and switched the marker off (FPS fell to ~28).

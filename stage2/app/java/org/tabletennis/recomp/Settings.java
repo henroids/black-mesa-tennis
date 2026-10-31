@@ -67,7 +67,7 @@ final class Settings {
     static final String[] QUEUED_LABELS = {"3 (default)", "4", "6"};
     int queued = 0;
     // v50 measurement: skip buffer/memory-only GPU syncs (may glitch the picture).
-    static final String[] SYNC_TEST_LABELS = {"Off", "Skip buffer syncs (test)"};
+    static final String[] SYNC_TEST_LABELS = {"Off", "Skip buffer syncs (test)", "Skip texture reloads (test)"};
     int syncTest = 0;
     String framesInFlight() { return queued == 1 ? "4" : queued == 2 ? "6" : null; }
     boolean uiUncapped() { return pacing == 3 || pacing == 5; }
