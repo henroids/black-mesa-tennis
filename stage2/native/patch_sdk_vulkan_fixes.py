@@ -447,10 +447,13 @@ done.append("F9 unchanged textures aren't re-converted")
 #      matched; the real table/player shadows are drawn elsewhere). Skipping them: ~+2 FPS
 #      (40.6 -> 42.8). F11: a full-size pass (~96 draws per frame) that writes neither colour
 #      nor depth, also no visible change (v63/v66): ~+0.5 FPS. Both counted in tt_work_stats[8].
+#      Both are "visual-risk" changes (tested in one venue / character / mode): the launcher's
+#      "Hidden passes" row turns them off (TT_DRAW_ALL_PASSES=1) for comparison.
 edit(CP, (
     "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n",
     "  reg::RB_DEPTHCONTROL normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);\n"
-    "  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
+    "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
+    "  if (tt_skip_passes && normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
     "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
     "                     : 0)) {  // tt-android F10: unused depth-only passes\n"
     "    const uint32_t pitch = regs.Get<reg::RB_SURFACE_INFO>().surface_pitch;\n"
@@ -459,14 +462,15 @@ edit(CP, (
     "      return true;\n"
     "    }\n"
     "  }\n"
-    "  if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
+    "  if (tt_skip_passes && regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
     "      !(normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) &&\n"
     "      !(pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
     "                     : 0)) {  // tt-android F11: full-size pass that writes neither colour nor depth\n"
     "    __atomic_fetch_add(&tt_work_stats[8], 1, __ATOMIC_RELAXED);\n"
     "    return true;\n"
-    "  }\n"))
-done.append("F10/F11 passes with no visible effect skipped")
+    "  }\n"),
+    includes=("#include <cstdlib>",))
+done.append("F10/F11 passes with no visible effect skipped (TT_DRAW_ALL_PASSES=1 draws them)")
 
 # ====================================================================== DIAGNOSTICS
 

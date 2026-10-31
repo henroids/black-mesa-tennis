@@ -49,6 +49,7 @@ public final class GameActivity extends SDLActivity {
         File base = GameFiles.baseDir(this);
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
+        if (settings.hiddenPasses == 1) setEnv("TT_DRAW_ALL_PASSES", "1");
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
             File logs = GameFiles.logsDir(this);

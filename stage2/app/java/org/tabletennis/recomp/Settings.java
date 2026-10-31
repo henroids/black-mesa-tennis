@@ -17,6 +17,11 @@ final class Settings {
     static final int[] FPS_VALUES = {60, 30, 0};
     static final int[] SHADER_THREAD_VALUES = {2, 4, 6};
 
+    // Visual-risk speed-ups (F10/F11: skip render passes with no visible effect so far). Kept
+    // switchable so any venue / character / mode can be compared with the original quickly.
+    static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
+    int hiddenPasses = 0;
+
     private static final String PREFS = "tt_settings";
 
     int resolution = 0;
@@ -37,6 +42,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
+        s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         return s;
     }
 
@@ -49,6 +55,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
+                .putInt("hidden_passes", hiddenPasses)
                 .commit();
     }
 
@@ -61,6 +68,7 @@ final class Settings {
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
                 + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
                 + " | GPU driver: " + driver
+                + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }
 

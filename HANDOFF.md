@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v67**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v68**).
 
 ---
 
@@ -155,13 +155,31 @@ were removed in v56; the history table below says what each experiment found.
 | v64 | In game: **hold Back 0.6 s = screenshot** (PixelCopy of the SDL surface → Pictures/TableTennis/tt_<date>_<time>.png, toast confirms); tap Back still opens the return-to-start pop-up | — |
 | v65 | Screenshot moved to **Select** (press and release on its own; Select+Start still opens the pop-up; the press still reaches the game). Back is tap-only again (owner's Back-hold closes apps system-wide) | — |
 | v66 | Screenshot moved to **L3 + R3** (both stick buttons): Select changes the camera in game, and Android never delivers the Home key to apps. Select is untouched again | — |
-| **v67** | **F11**: pass A skipped permanently; test row and pass census removed. `tools/use_version.sh <n>` switches to any earlier build | **Not tested yet** (expect ~43.5) |
+| v67 | **F11**: pass A skipped permanently; test row and pass census removed. `tools/use_version.sh <n>` switches to any earlier build | **Not tested yet** (expect ~43.5) |
+| **v68** | Launcher **Hidden passes: Skipped (faster) / Drawn (original)** turns F10 + F11 off (`TT_DRAW_ALL_PASSES=1`) for quick comparison in other venues/characters/modes | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
 vblank pacing, resolution (540p = 720p), AA/FXAA, Turnip sysmem/nobin, UI repaint rate,
 sampler pool, EU vs US disc, the presenter's empty submits, "kicking" the GPU, the driver
 version (all Turnip builds 36–38.5).
+
+## Visual-risk changes (owner's rule: keep them easy to undo)
+
+Changes that remove or skip rendering work, verified only in one venue (red-carpet hall),
+a few opponents and exhibition rallies. Each must stay switchable or individually
+removable, so a problem in another venue/character/mode can be checked and traced quickly.
+
+| Change | Build | What it skips | How to turn it off |
+|---|---|---|---|
+| F10 | v61 | depth-only passes into 640- and 1120-wide depth buffers (~37 + ~57 draws) | launcher Hidden passes → Drawn |
+| F11 | v67 | full-size pass writing neither colour nor depth (~96 draws) | launcher Hidden passes → Drawn |
+| F9 (lower risk) | v55 | GPU re-conversion of textures whose guest bytes are unchanged | remove section F9 |
+| Game MSAA 1 sample | ~v20 | the game's 4-sample tiled rendering | `TtGameMsaaOverride` in main.cpp |
+
+When something looks wrong somewhere: switch Hidden passes to Drawn and compare. If it fixes
+it, split the toggle per pass to find which one, then decide (keep drawn there / find a
+narrower condition). For anything else, `bash tools/use_version.sh <n>` builds an older build.
 
 ## 6. Current understanding of the bottleneck
 
