@@ -25,14 +25,11 @@ extern "C" REX_FUNC(__imp__VdSwap);
 
 
 // tt-android: the game's tiled-rendering setup passes its MSAA sample count through
-// here (see patch_game_msaa.py). TT_GAME_MSAA=off makes it render with 1 sample, which
-// fits the frame in a single EDRAM tile instead of drawing the scene once per strip.
+// here (see patch_game_msaa.py). Rendering with 1 sample fits the frame in a single
+// EDRAM tile instead of drawing the scene once per strip (~20 -> ~29 FPS when added;
+// host FXAA still smooths edges).
 extern "C" uint32_t TtGameMsaaOverride(uint32_t samples) {
-  static const bool off = [] {
-    const char* v = std::getenv("TT_GAME_MSAA");
-    return v && std::string_view(v) == "off";
-  }();
-  const uint32_t result = off && samples > 1 ? 1 : samples;
+  const uint32_t result = 1;
   static std::atomic<uint32_t> last{0xFFFFFFFFu};
   if (last.exchange(samples) != samples) {
     REXLOG_INFO("tt: game tiled rendering requested {} samples, using {}", samples, result);

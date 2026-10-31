@@ -16,9 +16,6 @@ final class Settings {
     static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped"};
     static final int[] FPS_VALUES = {60, 30, 0};
     static final int[] SHADER_THREAD_VALUES = {2, 4, 6};
-    // Game MSAA: off = the game renders 1 sample in one EDRAM tile instead of drawing
-    // the scene once per strip (the big GPU cost). Host FXAA still smooths edges.
-    static final String[] GAME_MSAA_LABELS = {"Off (faster)", "On (as shipped)"};
     // TEMPORARY test round (v58): one option per run; remove the row when the round is done.
     static final String[] TEST_LABELS = {"Off", "Skip depth pass 1440", "Skip depth pass 640",
             "Skip depth pass 1120", "Screen 30 Hz"};
@@ -32,7 +29,6 @@ final class Settings {
     boolean showFps = true;
     int shaderMode = 1;     // 0 = async (draws placeholders while compiling), 1 = wait (no missing objects)
     int shaderThreads = 1;  // index into SHADER_THREAD_VALUES
-    int gameMsaa = 0;
     boolean perfLog = true; // thread monitor + sampling profiler (logs/profile.txt)
 
     static Settings load(Context context) {
@@ -44,7 +40,6 @@ final class Settings {
         s.showFps = p.getBoolean("show_fps", true);
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
-        s.gameMsaa = clamp(p.getInt("game_msaa", 0), GAME_MSAA_LABELS.length);
         s.perfLog = p.getBoolean("perf_log", true);
         s.test = clamp(p.getInt("test_v58", 0), TEST_LABELS.length);
         return s;
@@ -58,7 +53,6 @@ final class Settings {
                 .putBoolean("show_fps", showFps)
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
-                .putInt("game_msaa", gameMsaa)
                 .putBoolean("perf_log", perfLog)
                 .putInt("test_v58", test)
                 .commit();
@@ -73,7 +67,6 @@ final class Settings {
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
                 + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
                 + " | GPU driver: " + driver
-                + " | Game MSAA: " + GAME_MSAA_LABELS[gameMsaa]
                 + " | Test: " + TEST_LABELS[test]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }

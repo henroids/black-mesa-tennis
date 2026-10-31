@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v58**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v59**).
 
 ---
 
@@ -101,7 +101,7 @@ The owner exports a zip from the launcher. Key files:
   (kgsl; with Turnip V38 it reads 99% @ 680 MHz in rallies).
 - `syms/`: symbol lists for host offsets.
 
-Env switches the native side still reads: `TT_GAME_MSAA=off|on` (launcher), `TT_PROFILE=<dir>`
+Env switches the native side still reads: `TT_PROFILE=<dir>`
 (launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). All experiment switches
 were removed in v56; the history table below says what each experiment found.
 
@@ -141,7 +141,8 @@ were removed in v56; the history table below says what each experiment found.
 | v55 | **Texture hash skip**: on a reload caused only by CPU writes, hash the guest bytes (XXH3) and skip the GPU re-conversion if unchanged since the last load; GPU-written (resolved) textures always reload (`TT_TEX_HASH=off`). Profile line `texture loads per frame: asked / skipped / GPU-written / MB hashed`. Launcher: Performance test row removed; Play's green focus box removed | Rallies ~38.5 → **~39.4 FPS**; ~27 of ~59 loads/frame skipped, ~31 are GPU-written (resolves) and must reload |
 | v56 | **Cleanup**: fresh SDK sources each build; patch script rewritten as fixes F1–F9 + counters D1–D3; removed every finished experiment (kick, fence check, empty-submit, barrier merge/classes/skip, texture skip test, frames-in-flight, vblank/UI-rate overrides, GPU timestamps, timeline, mmio/audio/tiling/fence/tracker stats, TT_* switches) | Rallies **~41 FPS** (from ~39.4): the removed diagnostics/experiments had a real cost |
 | v57 | Re-test round (Test row) | Same scene, FXAA on: Off ~40.8; **"No shadows" ~43.3 (+2.5)** but visible shadows remained: it skipped depth-only passes with pitches 1440, 640, 1120 (not the main shadows), no visible change noticed. Sysmem (AA off) ~41.2 ≈ no gain. Later runs (no-bin, 30 Hz, Off) were a much heavier scene (~1350 draws vs ~820, 39 vs 31 resolves) at ~30 FPS, so not comparable |
-| **v58** | Test row: skip the depth-only pass at pitch 1440 / 640 / 1120 separately, and Screen 30 Hz; profile shows depth-only draws per frame by pitch | **Not tested yet** |
+| **v58/v59** | Test row: skip the depth-only pass at pitch 1440 / 640 / 1120 separately, and Screen 30 Hz; profile shows depth-only draws per frame by pitch | **Not tested yet** |
+| v59 | Game MSAA launcher row removed: always 1 sample (the v57 round's last four runs had it flipped On by accident, ~30 FPS); `TT_GAME_MSAA` switch removed | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -219,7 +220,7 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 - Give one command per build (`git pull && bash stage2/tt_android_stage2.sh`) and a short,
   concrete test: which launcher settings, ~2 minutes of rallies, export logs, report the FPS.
 - Baseline settings for comparisons (v54 launcher): **GPU driver Turnip Gen8 V38, 720p, FXAA,
-  60 FPS, Shaders Wait, Game MSAA Off, Performance log On.** Retired
+  60 FPS, Shaders Wait, Performance log On.** (Game MSAA is always off since v59.) Retired
   options are still env toggles natively (TU_DEBUG, TT_FRAMES_IN_FLIGHT, TT_UI_HZ, ...) but
   no longer in the launcher. Keep the launcher lean: remove test rows once a test is done.
 - Menu stutter on page changes is shader compilation. The cache persists across builds

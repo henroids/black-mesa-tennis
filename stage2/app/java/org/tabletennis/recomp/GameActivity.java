@@ -49,7 +49,6 @@ public final class GameActivity extends SDLActivity {
         File base = GameFiles.baseDir(this);
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
-        setEnv("TT_GAME_MSAA", settings.gameMsaa == 0 ? "off" : "on");
         // TEMPORARY test round (v58)
         if (settings.test == 1) setEnv("TT_TEST", "skip1440");
         if (settings.test == 2) setEnv("TT_TEST", "skip640");
