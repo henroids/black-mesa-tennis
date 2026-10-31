@@ -51,9 +51,34 @@ cp "$KIT2/native/tt_profiler.cpp" "$P/src/tt_profiler.cpp"     # built-in sampli
 python3 "$KIT2/native/patch_game_msaa.py" "$P/generated/default" > "$LOGS/02-game-edits.log" 2>&1 \
   || fail "game MSAA edit did not apply (logs2/02-game-edits.log)"
 sed 's/^/  /' "$LOGS/02-game-edits.log"
-python3 "$KIT2/native/patch_sdk_vulkan_fixes.py" "$REXSDK_DIR" > "$LOGS/02-sdk-fixes.log" 2>&1 \
-  || fail "SDK Vulkan fixes did not apply (logs2/02-sdk-fixes.log)"
-cat "$LOGS/02-sdk-fixes.log" | sed 's/^/  /'
+# SDK changes are applied to FRESH sources every build: a clean copy of the SDK (with only
+# Stage 1's Android patches) is staged, today's patch_sdk_vulkan_fixes.py is applied to it,
+# and only files whose content differs are copied into the SDK we build. Removing a change
+# from the script really removes it, and unchanged files keep their timestamps so the
+# rebuild stays incremental.
+BASE="$WORK/rexglue-sdk-base"
+STAGED="$WORK/rexglue-sdk-staged"
+if [ ! -f "$BASE/.tt-base-ready" ]; then
+  echo "  making a clean copy of the SDK sources (first time only, 1-2 min)"
+  rm -rf "$BASE"
+  git clone -q --branch v0.10.0 --depth 1 https://github.com/rexglue/rexglue-sdk "$BASE" \
+    > "$LOGS/02-sdk-base.log" 2>&1 || fail "could not download clean SDK sources (logs2/02-sdk-base.log)"
+  ( cd "$BASE" && git apply --include='src/*' --include='include/*' \
+      "$WORK/mcla/patches/rexglue-v0.10.0-android-arm64.patch" ) >> "$LOGS/02-sdk-base.log" 2>&1 \
+    || fail "Android SDK patch did not apply to the clean copy (logs2/02-sdk-base.log)"
+  python3 "$WORK/mcla/scripts/patch_android_rexglue.py" --sdk "$BASE" >> "$LOGS/02-sdk-base.log" 2>&1 \
+    || fail "patch_android_rexglue.py failed on the clean copy (logs2/02-sdk-base.log)"
+  sed -i 's/WindowedApp::GetCreator("mcla")/WindowedApp::GetCreator("tabletennis")/' "$BASE/src/ui/windowed_app_main_sdl.cpp"
+  sed -i 's#"mcla.log"#"tabletennis.log"#g; s#"mcla-guest-memory"#"tt-guest-memory"#g' \
+    "$BASE/src/ui/rex_app.cpp" "$BASE/src/core/memory_posix.cpp"
+  touch "$BASE/.tt-base-ready"
+fi
+rm -rf "$STAGED" && mkdir -p "$STAGED" && cp -a "$BASE/src" "$BASE/include" "$STAGED/"
+python3 "$KIT2/native/patch_sdk_vulkan_fixes.py" "$STAGED" > "$LOGS/02-sdk-fixes.log" 2>&1 \
+  || fail "SDK changes did not apply (logs2/02-sdk-fixes.log)"
+sed 's/^/  /' "$LOGS/02-sdk-fixes.log"
+rsync -rc "$STAGED/src/" "$REXSDK_DIR/src/" && rsync -rc "$STAGED/include/" "$REXSDK_DIR/include/" \
+  || fail "could not update the SDK sources"
 ( cd "$P" && cmake --preset android-arm64-release ) > "$LOGS/02-configure.log" 2>&1 \
   || fail "CMake configure failed (logs2/02-configure.log)"
 ( cd "$P" && cmake --build --preset android-arm64-release --parallel "$JOBS" ) > "$LOGS/02-build.log" 2>&1 \

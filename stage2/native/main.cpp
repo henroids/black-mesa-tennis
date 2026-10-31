@@ -74,20 +74,6 @@ extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
   // Call original VdSwap to commit guest frame to GPU
   __imp__VdSwap(ctx, base);
 
-#if defined(__ANDROID__)
-  // tt-android: frame timeline event 7 = guest swap (recorder lives in the GPU plugin)
-  {
-    using EventFn = void (*)(uint32_t, uint64_t, uint64_t);
-    static EventFn event = [] {
-      void* p = dlsym(RTLD_DEFAULT, "TtTimelineEvent");
-      if (!p) {
-        if (void* h = dlopen("librexgpu-xenos.so", RTLD_NOW | RTLD_NOLOAD)) p = dlsym(h, "TtTimelineEvent");
-      }
-      return reinterpret_cast<EventFn>(p);
-    }();
-    if (event) event(7, 0, 0);
-  }
-#endif
 
   // Real game frame rate: one VdSwap per guest frame (the overlay's ImGui rate only
   // measures how often the host UI redraws).
@@ -212,7 +198,7 @@ namespace {
 struct EarlyInit {
   EarlyInit() {
     rex::cvar::SetFlagByName("protect_zero", "false");
-    if (!std::getenv("TT_STRICT_FETCH")) rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
   }
 } g_early_init;
 }  // namespace

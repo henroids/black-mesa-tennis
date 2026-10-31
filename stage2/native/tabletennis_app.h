@@ -84,17 +84,8 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
     {
       using clock = std::chrono::steady_clock;
       static auto next_draw = clock::now();
-      // TT_UI_HZ: test option to redraw the screen less often (each redraw is a GPU paint
-      // pass on the same queue as the game's rendering).
-      static const long long ui_hz = [] {
-        const char* v = std::getenv("TT_UI_HZ");
-        const long long hz = v ? std::atoll(v) : 60;
-        return hz >= 10 && hz <= 240 ? hz : 60LL;
-      }();
-      const auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / ui_hz);
-      auto now = clock::now();
-      static const bool ui_uncapped = std::getenv("TT_UI_UNCAPPED") != nullptr;
-      if (!ui_uncapped && next_draw > now) std::this_thread::sleep_until(next_draw);
+      constexpr auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / 60);
+      if (next_draw > clock::now()) std::this_thread::sleep_until(next_draw);
       next_draw = std::max(next_draw + kUiPeriod, clock::now() - kUiPeriod);
     }
     target_fps = 0;
@@ -174,7 +165,7 @@ class TabletennisApp : public rex::ReXApp {
                  const rex::PPCImageInfo& ppc_info)
       : rex::ReXApp(ctx, name, ppc_info) {
     rex::cvar::SetFlagByName("protect_zero", "false");
-    if (!std::getenv("TT_STRICT_FETCH")) rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
   }
 
   ~TabletennisApp() override {
@@ -196,7 +187,7 @@ class TabletennisApp : public rex::ReXApp {
  protected:
   void OnConfigurePaths(rex::PathConfig& paths) override {
     rex::cvar::SetFlagByName("protect_zero", "false");
-    if (!std::getenv("TT_STRICT_FETCH")) rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
 
 #if defined(__ANDROID__)
     // On Android the .so lives in a read-only install dir. Game data, settings.ini
@@ -286,7 +277,7 @@ class TabletennisApp : public rex::ReXApp {
     }
 #endif
     rex::cvar::SetFlagByName("protect_zero", "false");
-    if (!std::getenv("TT_STRICT_FETCH")) rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
     if (config.gpu_plugin.empty()) {
       config.gpu_plugin = "xenos";
     }

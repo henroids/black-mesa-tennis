@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v55**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v56**).
 
 ---
 
@@ -44,11 +44,12 @@ test showed, and where things stand now. Last updated 2026-11-01 (build **v55**)
   `cd ~/black-mesa-tennis && git pull && bash stage2/tt_android_stage2.sh`
   This applies the SDK patches, the game MSAA patch and the profiler, builds the APK and
   copies `TableTennis.apk` to the Windows Downloads folder.
-- **Gotcha:** stage 2 patches the **same SDK folder in place** on every build. Every patch in
-  `patch_sdk_vulkan_fixes.py` must be **idempotent** (guarded by a marker string), and changes
-  to an *already applied* patch don't take effect unless you add a separate repair step.
-  This bit us in v41: a stats array was enlarged in an existing patch, the old size stayed,
-  and the overflow disabled the GPU marker (fixed in v42 with a repair block).
+- **SDK sources are fresh every build (since v56).** Stage 2 keeps a clean copy of the SDK
+  (`~/tt-android/rexglue-sdk-base`: tag v0.10.0 + Stage 1's Android patches, made once),
+  copies its `src/` and `include/` to a staging folder, runs `patch_sdk_vulkan_fixes.py` on
+  it, then `rsync -rc` copies only changed files into `~/tt-android/rexglue-sdk`. So patches
+  apply exactly once to unmodified sources (no idempotency guards or repair steps), removing
+  a patch really removes it, and unchanged files keep their timestamps (incremental rebuild).
 - Commits are made by the assistant and pushed; the owner only pulls and builds.
 
 ### Branches (read this first)
@@ -59,10 +60,8 @@ test showed, and where things stand now. Last updated 2026-11-01 (build **v55**)
 - The owner switches between them like this:
   `git fetch && git checkout copilot && git pull && bash stage2/tt_android_stage2.sh`
   (`git checkout main` to go back).
-- Both branches patch the **same SDK folder** on the owner's PC (`~/tt-android/...`, see
-  stage 2). An SDK patch applied by one branch stays applied after switching. Keep patches
-  idempotent and guarded by marker strings, and if a build misbehaves after a switch,
-  re-extract the SDK from the release zip and rebuild.
+- Switching branches is safe: each build re-applies that branch's SDK changes to fresh
+  sources (see above).
 
 ### Repo layout
 ```
@@ -70,11 +69,11 @@ stage1/                 one-time setup script + overlay for the PC project
 stage2/
   tt_android_stage2.sh  build script (copies native files, runs patches, packages APK)
   native/
-    patch_sdk_vulkan_fixes.py  ~30 numbered, idempotent SDK patches (fixes + diagnostics)
+    patch_sdk_vulkan_fixes.py  SDK changes: fixes F1–F9 + counters D1–D3 (header lists them)
     patch_game_msaa.py         patches generated sub_82150500 (RAGE tiled-rendering setup)
-    main.cpp                   VdSwap hook: FPS counter, frame histogram, timeline swap event
+    main.cpp                   VdSwap hook: FPS counter, frame-time histogram, MSAA override
     tabletennis_app.h          app setup, FPS overlay (leave as is), UI repaint cap
-    tt_profiler.cpp            sampling profiler + stats report + timeline dump
+    tt_profiler.cpp            sampling profiler + per-frame stats report (profile.txt)
     android_gpu_driver.cpp     custom driver loading (adrenotools)
   app/java/org/tabletennis/recomp/
     LauncherActivity.java      start screen (settings rows, driver import, export logs)
@@ -91,23 +90,20 @@ The owner exports a zip from the launcher. Key files:
 - `game_sessions.txt`: one line per launch with **every setting**, including the driver.
 - `game_tabletennis.log`: runtime log. `GAME FPS: x (avg, worst) [session m:ss]` every ~2 s,
   "FPS drop" and "frame spike" lines, `tt: env TT_*` lines.
-- `game_profile.txt` (rewritten every 10 s; previous runs kept in `runs/` since v45):
-  - stats lines: memory faults, audio, frame pacing, GPU work per frame (draws, resolves,
-    texture loads/bytes, uploads), **GPU time per frame** (from Vulkan timestamps),
-    submission tail, barrier count, GPU latency, fence/marker waits, kicks, merged barriers,
-    and a whole-session frame-time histogram
-  - per-thread SELF / GUEST / INCLUSIVE sample sections (guest functions as `sub_XXXXXXXX`)
-- `game_timeline.txt` (and `runs/*_timeline.txt`): every 30 s, the last 1.5 s of events:
-  CPU submit, GPU start/end per submission, command-processor waits, end-submission,
-  guest SWAP, GPU kicks, presenter refresh/paint/present, sparse binds.
-  **Caution:** GPU times are aligned to the CPU clock by the minimum observed
-  (gpu_start − cpu_submit) offset, so absolute queue delays are only relative.
-- `game_cpu_threads.txt`: per-thread CPU %, CPU clocks, temperatures.
+- `game_profile.txt` (rewritten every 10 s; previous runs kept in `runs/`):
+  - session settings; frame pacing (guest vblanks/s, game frames/s, CP wait-for-memory);
+    GPU work per frame (draws, resolves, texture loads/KB, uploads/KB); texture loads per
+    frame (asked / skipped because unchanged / GPU-written / MB hashed); whole-session
+    frame-time histogram
+  - busy threads, and per-thread SELF / GUEST / INCLUSIVE samples (`sub_XXXXXXXX`)
+- `game_hotcode.txt`: guest machine code of the hottest functions (once, at 60 s).
+- `game_cpu_threads.txt`: per-thread CPU %, CPU clocks, temperatures, **GPU busy % and clock**
+  (kgsl; with Turnip V38 it reads 99% @ 680 MHz in rallies).
 - `syms/`: symbol lists for host offsets.
 
-Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=off`,
-`TT_FENCE_CHECK=off`, `TT_GPU_KICK=off`, `TT_EMPTY_SUBMIT=keep`, `TT_MERGE_BARRIERS=off`,
-`TT_FRAMES_IN_FLIGHT=1..6`, `TT_UI_HZ`, `TT_VBLANK_HZ`, `TT_GAME_MSAA=off|on`, `TT_PROFILE=<dir>`.
+Env switches the native side still reads: `TT_GAME_MSAA=off|on` (launcher), `TT_PROFILE=<dir>`
+(launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). All experiment switches
+were removed in v56; the history table below says what each experiment found.
 
 ## 5. History: what was done and what it did
 
@@ -142,7 +138,8 @@ Useful env toggles (set by the launcher or for experiments): `TT_FENCE_MARKER=of
 | v52 | "Skip texture reloads (test)": each texture loaded only once | Screen blank, menus invisible → unplayable, no measurement |
 | v53 | "Fewer texture reloads (test)": first load normal, then only every 4th reload | Rallies **~38 → ~43 FPS** (choppy, textures popping); compute dispatches halved → texture re-conversion is a real share of the GPU load |
 | v54 | Launcher cleanup: removed Turnip mode, Fast memory watch (always on), Frames queued, Sync test (buffer skip), 540p, 30/20 Hz screen tests, retired experiments/pacing/occlusion. The only test row is **Performance test** (Off / Fewer texture reloads). Return-to-start pop-up restyled like the start screen | — |
-| **v55** | **Texture hash skip**: on a reload caused only by CPU writes, hash the guest bytes (XXH3) and skip the GPU re-conversion if unchanged since the last load; GPU-written (resolved) textures always reload (`TT_TEX_HASH=off`). Profile line `texture loads per frame: asked / skipped / GPU-written / MB hashed`. Launcher: Performance test row removed; Play's green focus box removed | **Not tested yet** |
+| v55 | **Texture hash skip**: on a reload caused only by CPU writes, hash the guest bytes (XXH3) and skip the GPU re-conversion if unchanged since the last load; GPU-written (resolved) textures always reload (`TT_TEX_HASH=off`). Profile line `texture loads per frame: asked / skipped / GPU-written / MB hashed`. Launcher: Performance test row removed; Play's green focus box removed | Rallies ~38.5 → **~39.4 FPS**; ~27 of ~59 loads/frame skipped, ~31 are GPU-written (resolves) and must reload |
+| **v56** | **Cleanup**: fresh SDK sources each build; patch script rewritten as fixes F1–F9 + counters D1–D3; removed every finished experiment (kick, fence check, empty-submit, barrier merge/classes/skip, texture skip test, frames-in-flight, vblank/UI-rate overrides, GPU timestamps, timeline, mmio/audio/tiling/fence/tracker stats, TT_* switches) | **Not tested yet** (expect ~39 FPS, same picture) |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
