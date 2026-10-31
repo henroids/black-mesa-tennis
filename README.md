@@ -73,13 +73,14 @@ Other Android devices with a recent Adreno GPU may work but haven't been tested.
 ### Easy way: the Windows installer
 
 1. On this page, **Code → Download ZIP**, and unzip it anywhere.
-2. Double-click **`Install-Table-Tennis.cmd`**.
-3. If WSL/Ubuntu isn't installed yet, it offers to install it (asks for administrator
+2. Double-click **`Install-Table-Tennis.cmd`**. A window in the same style as the in-game start
+   screen opens (arrow keys or mouse to move, Enter to select, Esc to quit).
+3. If WSL/Ubuntu isn't installed yet, select **Install Ubuntu (WSL)** (asks for administrator
    permission). Restart if Windows asks, finish Ubuntu's first-time setup (user name and
    password), and double-click the installer again.
-4. Pick **your own ISO** in the file window. The installer installs the build tools, gets
+4. **Game disc** → pick **your own ISO**, then **Build APK**. The installer installs the build tools, gets
    the latest version, checks your ISO, builds everything (1–2 hours the first time), and
-   opens your **Downloads** folder with `TableTennis.apk` selected.
+   puts `TableTennis.apk` in your **Downloads** folder (**Open APK folder** shows it).
 
 Run it again whenever you want the latest version. It remembers your ISO and skips finished
 steps, so updates take minutes.
