@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v69**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v70**).
 
 ---
 
@@ -163,7 +163,8 @@ were removed in v56; the history table below says what each experiment found.
 | v66 | Screenshot moved to **L3 + R3** (both stick buttons): Select changes the camera in game, and Android never delivers the Home key to apps. Select is untouched again | — |
 | v67 | **F11**: pass A skipped permanently; test row and pass census removed. `tools/use_version.sh <n>` switches to any earlier build | **Not tested yet** (expect ~43.5) |
 | v68 | Launcher **Hidden passes: Skipped (faster) / Drawn (original)** turns F10 + F11 off (`TT_DRAW_ALL_PASSES=1`) for quick comparison in other venues/characters/modes | — |
-| **v69** | Test: pass B split into segments (new segment when the colour target or pixel shader changes within a frame); Test row skips segment 1–5; profile lists segments in draw order | **Not tested yet** |
+| **v69** | Test: pass B split into segments by draw order (new segment when the pixel shader changes within a frame); Test row skips segment 1–5 | Background never broke. Part 2 (~2 draws) gave oversized rectangular shadows (ball too). Parts 4 and 5 made shadows pop in and out: draw order changes between frames, so a 'segment' isn't the same thing every frame. ~44 FPS in rallies in all runs. Approach replaced in v70 |
+| **v70** | Test: pass B split by pixel shader into 6 fixed groups (shader hash % 6); Test row skips group 1–6; profile lists draws per group and per shader; active test is printed on L3+R3 screenshots | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

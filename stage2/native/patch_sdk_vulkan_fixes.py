@@ -526,14 +526,15 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v69)
+# ========================================================= TEMPORARY TEST ROUND (v70)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
 
 # ---- T1 Split pass B (half-size colour pass, pitch 640, no depth writes; it draws the
-#      background AND the real shadows) into segments: a new segment starts whenever the
-#      colour target (EDRAM base) or pixel shader changes between B draws within a frame.
-#      tt_bsplit: 8 x {segment info, draws}; info = base | format << 12 | first-seen order.
-#      TT_TEST=bseg<n> skips segment n (1-based) to see what each one draws.
+#      background AND the real shadows) by PIXEL SHADER. v69 split it by draw order, which
+#      changes from frame to frame (shadows popped in and out). A shader always lands in the
+#      same group, so each group is a fixed set of shaders.
+#      tt_bshader: 32 x {shader hash, draws}; group = hash % 6 + 1.
+#      TT_TEST=bgrp<n> skips every pass-B draw whose shader is in group n.
 edit(CP, (
     "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n",
     "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
@@ -541,30 +542,23 @@ edit(CP, (
     "      !(normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) &&\n"
     "      pixel_shader &&\n"
     "      draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())) {  // T1\n"
-    "    static const uint32_t tt_skip_seg = [] {\n"
+    "    static const uint32_t tt_skip_grp = [] {\n"
     "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      return v && std::strncmp(v, \"bseg\", 4) == 0 ? uint32_t(std::atoi(v + 4)) : 0u;\n"
+    "      return v && std::strncmp(v, \"bgrp\", 4) == 0 ? uint32_t(std::atoi(v + 4)) : 0u;\n"
     "    }();\n"
-    "    static uint64_t tt_frame = ~uint64_t(0), tt_last = ~uint64_t(0);\n"
-    "    static uint32_t tt_seg = 0;\n"
-    "    const uint64_t frame = __atomic_load_n(&tt_frame_stats[3], __ATOMIC_RELAXED);\n"
-    "    if (frame != tt_frame) { tt_frame = frame; tt_seg = 0; tt_last = ~uint64_t(0); }\n"
-    "    const auto ci = regs.Get<reg::RB_COLOR_INFO>();\n"
-    "    const uint64_t id = (uint64_t(ci.color_base) | (uint64_t(ci.color_base_bit_11) << 11)) |\n"
-    "                        (uint64_t(ci.color_format) << 12) | (pixel_shader->ucode_data_hash() << 16);\n"
-    "    if (id != tt_last) { tt_last = id; ++tt_seg; }\n"
-    "    if (tt_seg >= 1 && tt_seg <= 8) {\n"
-    "      tt_bsplit[(tt_seg - 1) * 2] = (id & 0xFFFF) | (uint64_t(1) << 40);\n"
-    "      __atomic_fetch_add(&tt_bsplit[(tt_seg - 1) * 2 + 1], 1, __ATOMIC_RELAXED);\n"
+    "    const uint64_t h = pixel_shader->ucode_data_hash() | 1;\n"
+    "    for (int i = 0; i < 32; ++i) {\n"
+    "      uint64_t cur = __atomic_load_n(&tt_bshader[i * 2], __ATOMIC_RELAXED);\n"
+    "      if (cur == 0) { __atomic_store_n(&tt_bshader[i * 2], h, __ATOMIC_RELAXED); cur = h; }\n"
+    "      if (cur == h) { __atomic_fetch_add(&tt_bshader[i * 2 + 1], 1, __ATOMIC_RELAXED); break; }\n"
     "    }\n"
-    "    if (tt_seg == tt_skip_seg) {\n"
+    "    if (tt_skip_grp && h % 6 + 1 == tt_skip_grp) {\n"
     "      __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
     "      return true;\n"
     "    }\n"
     "  }\n"),
-    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_bsplit[16] = {};  // T1\n'
-            'extern "C" uint64_t tt_frame_stats[8];\n',
+    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_bshader[64] = {};  // T1\n',
     includes=("#include <cstring>",))
-done.append("T1 test: pass B split into segments; TT_TEST=bseg<n>")
+done.append("T1 test: pass B split by pixel shader into 6 groups; TT_TEST=bgrp<n>")
 
 print("\n".join(done))
