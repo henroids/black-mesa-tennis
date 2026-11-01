@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Pixel-grid CRT filter (black-and-white, detailed).
+"""Pixel filter (black, grey and white, detailed).
 
-Turns every photo in a folder into a two-tone pixel image with a dark grid between
-the "pixels", like an old screen. Your originals are only read, never changed; the
+Turns every photo in a folder into an image made of individual square pixels. Your originals are only read, never changed; the
 pixelated copies go into a separate folder with the same file names (as .png).
 
 Usage:
@@ -12,6 +11,11 @@ Usage:
                picked; 72 = chunkier, larger = more detail)
   --cell-size  size of each pixel in the output image, in real pixels (15 -> 1440 px
                on the short side)
+  --style      how the pixels are drawn:
+                 border  (default) every pixel a touch smaller, leaving a hairline gap
+                 rounded full-size pixels with slightly rounded corners
+                 jitter  each pixel very slightly smaller or larger than the next
+                 solid   pixels fill their whole cell; same-colour pixels merge
   --grey       third tone between black and white: "dark" (default, dark grey),
                "light" (very light grey) or "none" (black and white only)
 """
@@ -29,11 +33,13 @@ except ImportError:
     pass
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif"}
-GRID_COLOR = (38, 38, 38)
+BACKGROUND = 38  # dark grey seen between pixels
+SUPERSAMPLE = 4  # pixels are drawn 4x larger, then scaled down, so every edge is even
+STYLES = ("border", "rounded", "jitter", "solid")
 GREYS = {"none": None, "light": 200, "dark": 96}
 
 
-def pixelate(path, cells, cell_size, grey=None):
+def pixelate(path, cells, cell_size, grey=None, style="border"):
     im = ImageOps.exif_transpose(Image.open(path)).convert("L")  # respect phone rotation
     w, h = im.size
     if w <= h:
@@ -69,15 +75,32 @@ def pixelate(path, cells, cell_size, grey=None):
         q = np.where(lone, majority, q).astype(np.uint8)
         bw = np.array([0, grey, 255], np.uint8)[q]
 
-    big = Image.fromarray(bw).convert("RGB").resize((cols * cell_size, rows * cell_size),
-                                                    Image.NEAREST)
-    line = max(1, cell_size // 8)
-    draw = ImageDraw.Draw(big)
-    for x in range(0, cols * cell_size, cell_size):
-        draw.rectangle([x, 0, x + line - 1, rows * cell_size], fill=GRID_COLOR)
-    for y in range(0, rows * cell_size, cell_size):
-        draw.rectangle([0, y, cols * cell_size, y + line - 1], fill=GRID_COLOR)
-    return big
+    return draw_pixels(bw, cell_size, style)
+
+
+def draw_pixels(tones, cell_size, style):
+    """Draws one square per cell. All sizes are fractions of a cell, so the look is the
+    same at any --cell-size; drawing big and scaling down keeps every gap the same width."""
+    rows, cols = tones.shape
+    if style == "solid":
+        return Image.fromarray(tones).convert("RGB").resize((cols * cell_size, rows * cell_size),
+                                                           Image.NEAREST)
+    c = cell_size * SUPERSAMPLE
+    canvas = Image.new("L", (cols * c, rows * c), BACKGROUND)
+    draw = ImageDraw.Draw(canvas)
+    inset, radius = {"border": (0.045, 0), "rounded": (0.0, 0.2), "jitter": (0.03, 0)}[style]
+    rng = np.random.default_rng(7)  # same picture every run
+    jitter = rng.uniform(-0.05, 0.05, (rows, cols)) if style == "jitter" else np.zeros((rows, cols))
+    for y in range(rows):
+        for x in range(cols):
+            m = (inset + jitter[y, x]) * c
+            box = [x * c + m, y * c + m, (x + 1) * c - m - 1, (y + 1) * c - m - 1]
+            fill = int(tones[y, x])
+            if radius:
+                draw.rounded_rectangle(box, radius=radius * c, fill=fill)
+            else:
+                draw.rectangle(box, fill=fill)
+    return canvas.resize((cols * cell_size, rows * cell_size), Image.LANCZOS).convert("RGB")
 
 
 def main():
@@ -86,6 +109,8 @@ def main():
     ap.add_argument("output", type=Path, help="folder for the pixelated copies")
     ap.add_argument("--cells", type=int, default=96)
     ap.add_argument("--cell-size", type=int, default=15)
+    ap.add_argument("--style", choices=STYLES, default="border",
+                    help="border (default), rounded, jitter or solid")
     ap.add_argument("--grey", choices=["none", "light", "dark"], default="dark",
                     help="third tone: dark grey (default), light grey, or none for black and white only")
     args = ap.parse_args()
@@ -103,7 +128,7 @@ def main():
     for i, photo in enumerate(photos, 1):
         target = args.output / (photo.stem + ".png")
         try:
-            pixelate(photo, args.cells, args.cell_size, GREYS[args.grey]).save(target)
+            pixelate(photo, args.cells, args.cell_size, GREYS[args.grey], args.style).save(target)
             done += 1
             print(f"[{i}/{len(photos)}] {photo.name} -> {target.name}")
         except Exception as e:  # keep going if one file is unreadable
