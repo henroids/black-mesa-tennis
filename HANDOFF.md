@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v70**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v71**).
 
 ---
 
@@ -164,7 +164,8 @@ were removed in v56; the history table below says what each experiment found.
 | v67 | **F11**: pass A skipped permanently; test row and pass census removed. `tools/use_version.sh <n>` switches to any earlier build | **Not tested yet** (expect ~43.5) |
 | v68 | Launcher **Hidden passes: Skipped (faster) / Drawn (original)** turns F10 + F11 off (`TT_DRAW_ALL_PASSES=1`) for quick comparison in other venues/characters/modes | — |
 | **v69** | Test: pass B split into segments by draw order (new segment when the pixel shader changes within a frame); Test row skips segment 1–5 | Background never broke. Part 2 (~2 draws) gave oversized rectangular shadows (ball too). Parts 4 and 5 made shadows pop in and out: draw order changes between frames, so a 'segment' isn't the same thing every frame. ~44 FPS in rallies in all runs. Approach replaced in v70 |
-| **v70** | Test: pass B split by pixel shader into 6 fixed groups (shader hash % 6); Test row skips group 1–6; profile lists draws per group and per shader; active test is printed on L3+R3 screenshots | **Not tested yet** |
+| **v70** | Test: pass B split by pixel shader into 6 groups (hash % 6) | Bug: the hash had its low bit forced on, so only groups 2, 4, 6 had shaders (1/3/5 = same as Off). Pass B uses just 8 pixel shaders. G6 (5 shaders, ~50–65 draws, mostly `a452`) = background + shadows: skipping it broke the background and removed shadows. G2 (`f895` ~6 draws, `8cc4` 1) = motion blur (ball trail and fast moves looked choppy). G4 (`635f`, 1 draw): nothing visible. Last-10 s rally FPS: Off 44.0, all of pass B skipped 44.7, so pass B is worth < 1 FPS |
+| **v71** | Test: skip ONE pass-B pixel shader at a time (`TT_TEST=bsh<id>`, 8 ids) | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

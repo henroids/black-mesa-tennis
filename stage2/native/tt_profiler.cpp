@@ -515,22 +515,13 @@ void RunProfiler(std::string dir) {
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8), per(9));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
-          if (const uint64_t* bs = FindStats("tt_bshader")) {  // TEMPORARY test round (v70)
+          if (const uint64_t* bs = FindStats("tt_bshader")) {  // TEMPORARY test round (v71)
             static uint64_t bs_prev[64] = {};
-            double grp[6] = {};
-            int nshaders[6] = {};
-            for (int i = 0; i < 32 && bs[i * 2]; ++i) {
-              const int g = int(bs[i * 2] % 6);
-              grp[g] += (bs[i * 2 + 1] - bs_prev[i * 2 + 1]) / swaps;
-              ++nshaders[g];
-            }
-            std::fprintf(f, "pass B by shader group, draws per frame:");
-            for (int g = 0; g < 6; ++g) std::fprintf(f, "  G%d %.1f (%d shaders)", g + 1, grp[g], nshaders[g]);
-            std::fprintf(f, "\npass B shaders (group:id draws/frame):");
+            std::fprintf(f, "pass B shaders (id: draws/frame):");
             for (int i = 0; i < 32 && bs[i * 2]; ++i) {
               const double d = (bs[i * 2 + 1] - bs_prev[i * 2 + 1]) / swaps;
               if (d >= 0.05)
-                std::fprintf(f, "  %d:%04llx %.1f", int(bs[i * 2] % 6) + 1,
+                std::fprintf(f, "  %04llx: %.1f",
                              static_cast<unsigned long long>((bs[i * 2] >> 16) & 0xFFFF), d);
             }
             std::fprintf(f, "\n");
