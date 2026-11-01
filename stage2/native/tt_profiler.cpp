@@ -513,9 +513,10 @@ void RunProfiler(std::string dir) {
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
                             "%.1f uploads (%.0f KB), %.0f draws of unused passes skipped, %.0f skipped by a test\n",
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8), per(9));
-            if (per(10) > 0)  // TEMPORARY test round (v72)
-              std::fprintf(f, "main scene pass: %.0f draws per frame, %.0f%% into a gamma (sRGB) target\n",
-                           per(10), 100.0 * per(11) / per(10));
+            if (per(10) > 0)  // TEMPORARY test round (v73)
+              std::fprintf(f, "main scene pass: %.0f draws per frame; render-target copies: %.1f draws, "
+                              "%.2f screens of pixels per frame\n",
+                           per(10), per(12), per(13) / (1280.0 * 720.0));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
           if (tex) {
