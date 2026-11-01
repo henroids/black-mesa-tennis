@@ -73,8 +73,8 @@ Other Android devices with a recent Adreno GPU may work but haven't been tested.
 ### Easy way: the Windows installer
 
 1. On this page, **Code → Download ZIP**, and unzip it anywhere.
-2. Double-click **`Install-Table-Tennis.cmd`**. A window in the same style as the in-game start
-   screen opens (arrow keys or mouse to move, Enter to select, Esc to quit).
+2. Double-click **`Install-Table-Tennis.cmd`**. Use the arrow keys or mouse to move, Enter to
+   select, and Esc to quit.
 3. If WSL/Ubuntu isn't installed yet, select **Install Ubuntu (WSL)** (asks for administrator
    permission). Restart if Windows asks, finish Ubuntu's first-time setup (user name and
    password), and double-click the installer again.
@@ -114,7 +114,7 @@ If a stage fails, it says so and leaves a log zip (`~/tt-android/tt-stage1-logs.
 
 1. Copy `TableTennis.apk` to your device and install it (allow installs from your file manager
    if Android asks).
-2. Open **Table Tennis**. You'll see the start screen (black, pixel font).
+2. Open **Table Tennis**.
 3. **Game disc → Choose**, and pick your ISO on the device. It is copied into the app's own folder
    once (keep the screen on until it says *Disc ready*).
 4. *(Recommended)* **Import driver**, pick a Turnip driver package (`.zip` / `.adpkg`), and select it
