@@ -513,19 +513,10 @@ void RunProfiler(std::string dir) {
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
                             "%.1f uploads (%.0f KB), %.0f draws of unused passes skipped, %.0f skipped by a test\n",
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8), per(9));
+            if (per(10) > 0)  // TEMPORARY test round (v72)
+              std::fprintf(f, "main scene pass: %.0f draws per frame, %.0f%% into a gamma (sRGB) target\n",
+                           per(10), 100.0 * per(11) / per(10));
             std::memcpy(work_prev, work, sizeof work_prev);
-          }
-          if (const uint64_t* bs = FindStats("tt_bshader")) {  // TEMPORARY test round (v71)
-            static uint64_t bs_prev[64] = {};
-            std::fprintf(f, "pass B shaders (id: draws/frame):");
-            for (int i = 0; i < 32 && bs[i * 2]; ++i) {
-              const double d = (bs[i * 2 + 1] - bs_prev[i * 2 + 1]) / swaps;
-              if (d >= 0.05)
-                std::fprintf(f, "  %04llx: %.1f",
-                             static_cast<unsigned long long>((bs[i * 2] >> 16) & 0xFFFF), d);
-            }
-            std::fprintf(f, "\n");
-            std::memcpy(bs_prev, bs, sizeof bs_prev);
           }
           if (tex) {
             auto per = [&](int i) { return (tex[i] - tex_prev[i]) / swaps; };

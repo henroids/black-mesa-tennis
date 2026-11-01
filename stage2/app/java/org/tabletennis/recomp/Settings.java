@@ -22,12 +22,9 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
-    // TEMPORARY test round (v71): remove the row when the round is done. Each entry skips one
-    // pass-B pixel shader (id from the v70 profile; draws per frame in brackets).
-    static final String[] TEST_LABELS = {"Off", "Skip B shader a452 (~50)", "Skip B shader 8310 (3)",
-            "Skip B shader 1e85 (1)", "Skip B shader 0dbc (1)", "Skip B shader 2690 (1)",
-            "Skip B shader f895 (~6)", "Skip B shader 8cc4 (1)", "Skip B shader 635f (1)"};
-    static final String[] TEST_IDS = {"", "a452", "8310", "1e85", "0dbc", "2690", "f895", "8cc4", "635f"};
+    // TEMPORARY test round (v72, main scene pass): remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Gamma targets 8-bit", "Main pass left half only",
+            "Turnip: no LRZ", "Turnip: no UBWC"};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -50,7 +47,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v71", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v72", 0), TEST_LABELS.length);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         return s;
     }
@@ -64,7 +61,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v71", test)
+                .putInt("test_v72", test)
                 .putInt("hidden_passes", hiddenPasses)
                 .commit();
     }
@@ -103,6 +100,8 @@ final class Settings {
         args.add("--vulkan_pipeline_creation_threads=" + SHADER_THREAD_VALUES[shaderThreads]);
         args.add("--protect_zero=false");
         args.add("--gpu_allow_invalid_fetch_constants=true");
+        // TEMPORARY test (v72): k_8_8_8_8_GAMMA targets as 8-bit sRGB instead of 16-bit.
+        if (test == 1) args.add("--gamma_render_target_as_unorm16=false");
         // Present from the UI thread: otherwise the GPU command thread painted and waited
         // for the display's next refresh on every guest frame.
         args.add("--host_present_from_non_ui_thread=false");

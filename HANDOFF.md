@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v71**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v72**).
 
 ---
 
@@ -165,7 +165,8 @@ were removed in v56; the history table below says what each experiment found.
 | v68 | Launcher **Hidden passes: Skipped (faster) / Drawn (original)** turns F10 + F11 off (`TT_DRAW_ALL_PASSES=1`) for quick comparison in other venues/characters/modes | — |
 | **v69** | Test: pass B split into segments by draw order (new segment when the pixel shader changes within a frame); Test row skips segment 1–5 | Background never broke. Part 2 (~2 draws) gave oversized rectangular shadows (ball too). Parts 4 and 5 made shadows pop in and out: draw order changes between frames, so a 'segment' isn't the same thing every frame. ~44 FPS in rallies in all runs. Approach replaced in v70 |
 | **v70** | Test: pass B split by pixel shader into 6 groups (hash % 6) | Bug: the hash had its low bit forced on, so only groups 2, 4, 6 had shaders (1/3/5 = same as Off). Pass B uses just 8 pixel shaders. G6 (5 shaders, ~50–65 draws, mostly `a452`) = background + shadows: skipping it broke the background and removed shadows. G2 (`f895` ~6 draws, `8cc4` 1) = the real shadows (none under the table or the ball). The 'choppy ball trail' note came from group 1, which skipped nothing, so it was most likely not the test. G4 (`635f`, 1 draw): nothing visible. Last-10 s rally FPS: Off 44.0, all of pass B skipped 44.7, so pass B is worth < 1 FPS |
-| **v71** | Test: skip ONE pass-B pixel shader at a time (`TT_TEST=bsh<id>`, 8 ids) | **Not tested yet** |
+| **v71** | Test: skip one pass-B shader at a time | Never run: owner chose to keep shadows (cheap, look good) and pinned the question |
+| **v72** | Main scene pass round: census (draws, share into gamma targets); tests: gamma targets 8-bit (`--gamma_render_target_as_unorm16=false`), main pass clipped to the left half (diagnostic: pixel- vs vertex-bound), `TU_DEBUG=nolrz`, `TU_DEBUG=noubwc` | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -223,7 +224,7 @@ Per gameplay frame (~26–28 ms, Turnip V38):
 ## 7. Suggested next steps
 
 ### Pinned (revisit for small wins)
-- **Pass B cheaper** (background + shadows, half size, ~73 draws, worth ~1.5 FPS if it were free): e.g. render it at a lower resolution, or update it every other frame.
+- **Shadows / pass B** (pinned by the owner, keep shadows): pass B uses 8 pixel shaders. The real shadows are just `f895` + `8cc4` (~7 draws); the background is mostly `a452` (~50 draws). All of pass B skipped was only ~+0.7 FPS (v70), so not worth trading looks for. Revisit only if needed.
 - **Turnip sysmem** (`TU_DEBUG=sysmem`): owner may add it as a launcher option later. v57 ~41.2 vs 40.8
   (with AA off); v62: +0.4 with FXAA, −0.0 with AA off, i.e. within run-to-run noise so far.
 - AA Off = +1.3 FPS (v62); stays a launcher choice (owner).

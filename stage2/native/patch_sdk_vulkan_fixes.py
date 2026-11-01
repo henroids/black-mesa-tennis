@@ -526,39 +526,45 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v71)
+# ========================================================= TEMPORARY TEST ROUND (v72)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
 
-# ---- T1 Pass B (half-size colour pass, pitch 640, no depth writes) uses only 8 pixel
-#      shaders. v70 showed one group of 5 draws the background + shadows and a group of 2 the
-#      motion blur. This round skips ONE shader at a time to tell them apart.
-#      tt_bshader: 32 x {shader hash, draws}; the short id is (hash >> 16) & 0xFFFF.
-#      TT_TEST=bsh<id in hex> skips every pass-B draw with that pixel shader.
+# ---- T1 Main scene pass census (pitch 1280, colour + depth writes; ~400 draws, most of the
+#      GPU time): [10] its draws, [11] those whose colour target 0 is k_8_8_8_8_GAMMA (stored
+#      as 16-bit-per-channel by default, see the gamma test).
 edit(CP, (
     "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n",
     "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
-    "  if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 640 &&\n"
-    "      !(normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) &&\n"
+    "  if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
+    "      normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
     "      pixel_shader &&\n"
     "      draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())) {  // T1\n"
-    "    static const uint64_t tt_skip_id = [] {\n"
-    "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      return v && std::strncmp(v, \"bsh\", 3) == 0 ? uint64_t(std::strtoul(v + 3, nullptr, 16))\n"
-    "                                                    : ~uint64_t(0);\n"
-    "    }();\n"
-    "    const uint64_t h = pixel_shader->ucode_data_hash() | 1;\n"
-    "    for (int i = 0; i < 32; ++i) {\n"
-    "      uint64_t cur = __atomic_load_n(&tt_bshader[i * 2], __ATOMIC_RELAXED);\n"
-    "      if (cur == 0) { __atomic_store_n(&tt_bshader[i * 2], h, __ATOMIC_RELAXED); cur = h; }\n"
-    "      if (cur == h) { __atomic_fetch_add(&tt_bshader[i * 2 + 1], 1, __ATOMIC_RELAXED); break; }\n"
-    "    }\n"
-    "    if (((h >> 16) & 0xFFFF) == tt_skip_id) {\n"
-    "      __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
-    "      return true;\n"
-    "    }\n"
-    "  }\n"),
-    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_bshader[64] = {};  // T1\n',
-    includes=("#include <cstring>",))
-done.append("T1 test: skip one pass-B pixel shader; TT_TEST=bsh<id>")
+    "    __atomic_fetch_add(&tt_work_stats[10], 1, __ATOMIC_RELAXED);\n"
+    "    if (regs.Get<reg::RB_COLOR_INFO>().color_format ==\n"
+    "        xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA)\n"
+    "      __atomic_fetch_add(&tt_work_stats[11], 1, __ATOMIC_RELAXED);\n"
+    "  }\n"))
+done.append("T1 census: main scene pass draws and gamma targets")
+
+# ---- T2 Diagnostic, TT_TEST=half: main-pass draws are clipped to the left half of the
+#      screen (right half stays garbage). If FPS jumps, the main pass is limited by pixel
+#      work (shaders, bandwidth); if it barely moves, by vertices / draw count.
+edit(CP, (
+    "  scissor_rect.extent.height = scissor.extent[1];\n"
+    "  SetScissor(scissor_rect);\n",
+    "  scissor_rect.extent.height = scissor.extent[1];\n"
+    "  static const bool tt_half = [] {  // T2\n"
+    "    const char* v = std::getenv(\"TT_TEST\");\n"
+    "    return v && std::strcmp(v, \"half\") == 0;\n"
+    "  }();\n"
+    "  if (tt_half && regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
+    "      normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) {\n"
+    "    const int32_t limit = int32_t(640 * draw_resolution_scale_x);\n"
+    "    scissor_rect.extent.width = scissor_rect.offset.x >= limit ? 0u\n"
+    "        : std::min<uint32_t>(scissor_rect.extent.width, uint32_t(limit - scissor_rect.offset.x));\n"
+    "  }\n"
+    "  SetScissor(scissor_rect);\n"),
+    includes=("#include <algorithm>", "#include <cstring>"))
+done.append("T2 test: TT_TEST=half clips the main pass to the left half")
 
 print("\n".join(done))
