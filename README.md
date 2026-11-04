@@ -34,13 +34,14 @@
 
 ## Status
 
-Playable, and still being optimised. Measured on an **AYN Thor** (Snapdragon 8 Gen 2 / Adreno 740)
+Playable from start to finish. Measured on an **AYN Thor** (Snapdragon 8 Gen 2 / Adreno 740)
 with the recommended settings below:
 
 | Part of the game | Frame rate |
 |---|---|
 | Menus, character select | ~57–60 FPS |
-| Rallies (720p, FXAA) | ~43–45 FPS |
+| Rallies (720p, FXAA, 60 FPS setting) | ~43–45 FPS |
+| Rallies (40 FPS setting, 120 Hz screen) | steady 40 FPS, much lower CPU/GPU load |
 | Rallies (720p, anti-aliasing Off) | ~45–46 FPS |
 
 The target is a steady 60 FPS in matches. During rallies the GPU is the limit (it runs at 99% at
@@ -169,7 +170,8 @@ The game uses a controller, mapped like an Xbox 360 pad. Extra shortcuts while p
 
 ## Known issues
 
-- Matches run at ~43–45 FPS rather than 60 on the AYN Thor; work continues.
+- Matches run at ~43–45 FPS rather than 60 on the AYN Thor (the graphics chip is the limit).
+  The **40 FPS** setting gives a steady, even frame rate on a 120 Hz screen instead.
 - Brief stutters the first time each screen loads (shader preparation; cached afterwards).
 - *Hidden passes: Skipped* has only been checked in a few venues and modes. If something looks
   off, try *Drawn*.

@@ -20,7 +20,8 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F10       skip two depth-only passes with no visible effect (640/1120 wide)     ~+2 FPS
   F11       skip a full-size pass that writes neither colour nor depth (~96 draws) ~+0.5 FPS
   F12       skip render-target copies (EDRAM transfers between passes, ~26/frame)  ~+1.4 FPS
-  F13       stereo sound mix by the SDK instead of Android's 5.1 downmix (clearer hits)
+  F13       stereo sound mix by the SDK instead of Android's 5.1 downmix, rear (echo)
+            channels at 0.25 (clearer, drier ball hits)
   F14       screen repainted once per new game frame (no repeated repaints)
   (F10-F12 are switched off together by TT_DRAW_ALL_PASSES=1: launcher "Hidden passes")
 
@@ -496,29 +497,21 @@ done.append("F12 render-target copies skipped (TT_DRAW_ALL_PASSES=1 keeps them)"
 # ---- F13 Stereo sound mix. Android reports its output as 6 channels, so the emulator handed
 #      it the game's 5.1 mix and Android folded that down to the Thor's two speakers itself:
 #      ball hits sounded muffled, hollow and distant. The SDK's own 5.1 -> stereo fold (the
-#      path it uses for stereo devices) runs instead and Android gets plain stereo. v79:
-#      "way better" (owner). TEMPORARY test (v81): TT_TEST=echo50 / echo25 turn the rear
-#      channels down in the fold (the SDK default is 0.707) to hear whether that's the echo.
+#      path it uses for stereo devices) runs instead and Android gets plain stereo, with the
+#      rear channels (mostly the arena's echo) at 0.25 instead of the SDK's 0.707.
+#      v79: "way better"; v81: owner picked the 0.25 rear level ("much less echo").
 edit("src/audio/sdl/sdl_audio_driver.cpp", (
     "  if (obtained_spec.channels <= 2) {\n",
     "#if defined(__ANDROID__)\n"
-    "  {  // tt-android F13: always use the SDK's stereo fold\n"
-    "    const bool tt_android_stereo = true;\n"
-    "    const char* v = std::getenv(\"TT_TEST\");\n"
-    "    const float rear = v && std::strcmp(v, \"echo50\") == 0   ? 0.5f\n"
-    "                       : v && std::strcmp(v, \"echo25\") == 0 ? 0.25f\n"
-    "                                                              : -1.0f;\n"
-    "    if (rear >= 0.0f) {\n"
-    "      StereoFold fold = GetStereoFold();\n"
-    "      fold.surround = rear;\n"
-    "      SetStereoFold(fold);\n"
-    "    }\n"
-    "    if (tt_android_stereo) obtained_spec.channels = 2;\n"
+    "  {  // tt-android F13: the SDK's stereo fold, rear channels turned down\n"
+    "    StereoFold fold = GetStereoFold();\n"
+    "    fold.surround = 0.25f;\n"
+    "    SetStereoFold(fold);\n"
+    "    obtained_spec.channels = 2;\n"
     "  }\n"
     "#endif\n"
-    "  if (obtained_spec.channels <= 2) {\n"),
-    includes=("#include <cstdlib>", "#include <cstring>"))
-done.append("F13 stereo sound mix by the SDK (not Android's 5.1 downmix)")
+    "  if (obtained_spec.channels <= 2) {\n"))
+done.append("F13 stereo sound mix by the SDK, less rear echo (not Android's 5.1 downmix)")
 
 # ---- F14 Repaint only on new game frames. The overlay (an ImGui UI drawer) keeps the UI
 #      thread repainting; it used to be capped at 60 Hz, but the game makes ~44 frames/s, so

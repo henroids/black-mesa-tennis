@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v81**).
+test showed, and where things stand now. Last updated 2026-11-05 (build **v82**, the wrap-up build).
 
 ---
 
@@ -179,7 +179,8 @@ were removed in v56; the history table below says what each experiment found.
 | **v78** | Load-reduction round (no intended visual change), Test row: **Repaint on new frames** (`TT_TEST=newframes`: presenter waits before taking the guest image until the game has refreshed it, ≤~120 Hz, ≥10 Hz; overlay's own 60 Hz sleep skipped; counters `tt_present_stats`), **Less texture hashing** (`lesshash`: F9 doesn't hash GPU-written textures, and a CPU-written texture that changed on its last 8 loads is reloaded without hashing, re-checked every 16th load), **Both**, and **Stereo sound mix** (`TT_TEST=stereo`: Android reports a 6-channel output, so the game's 5.1 mix was folded to the Thor's speakers by Android; this uses the SDK's own stereo fold instead; owner hears ball hits as muffled/hollow/distant). Also: the "Loading main menu" screen (ImGui, `tabletennis_app.h`) now uses the start-screen look: GamePocket (copied from the APK to files/ and passed as `TT_UI_FONT`), 40/20 px = 2×/1× its pixel grid, white title, grey line, black Also: **frame pacing** ported from Table-Tennis-Rockstar-PC v1.0.6–v1.1.2 (limiter moved before `__imp__VdSwap`, absolute deadlines, late frames rebased; was a relative sleep after the swap), and a **40 FPS** frame-rate choice (pref `fps_v2`, old `fps` index migrated) that asks Android for the screen's 120 Hz mode (`preferredDisplayModeId`; 30/60 ask for 60 Hz; supported modes logged to logcat) | Last-10 s, all ~43.7 FPS. **Less hashing: 42 → 3.4 MB hashed per frame, GPU thread 64% → 47% of a core** (kept, permanent in F9). Repaint on new frames: no gain (SDLThread 25% → 21%). **Finding: the screen was repainted only ~22 times/s in every mode while the game made ~44 frames/s**: F8 makes the UI thread wait on the CPU for its paint, which sits in the GPU queue behind the game's queued frames, so about half the game's frames were never shown. Stereo / 40 FPS / loading screen not in this run (built before they were pushed) |
 | **v79** | Tests: **Paint without waiting** (`TT_TEST=nowait`: the paint signals the present semaphore and the present waits GPU-side; acquire still on a CPU fence), **No wait + new frames only** (`nowaitnew`: plus the v78 repaint-on-new-frames wait), **Stereo sound mix**. 40 FPS option, frame pacing, loading screen also in this build | Stereo sound mix: "way better" (owner), maybe too much echo on the ball → permanent as **F13**. Last-10 s, 60 FPS cap: Off 43.6 game frames / **21.8 repaints/s**; Paint without waiting 43.5 / 60.2 (every frame shown, plus repeats); **No wait + new frames 43.7 / 43.6** (one paint per frame, GPU thread 31%). **40 FPS**: the Thor has 1080x1920 @60 and @120 (default 120); 40 FPS mode ran 39.7 game frames, GPU thread 25%, main thread 10% (much lower load). Owner: everything looked and played fine |
 | **v80** | F13 stereo mix permanent; Test row: Paint without waiting, No wait + new frames only, **Less echo** (`TT_TEST=echo50`: rear channels 0.5 in the stereo fold instead of 0.707), **Much less echo** (`echo25`: 0.25) | Built v79 instead; echo tests carried to v81 |
-| **v81** | Made permanent: **F8** UI thread no longer waits for its paint (present waits GPU-side), **F14** repaint once per new game frame (presenter; overlay's 60 Hz cap removed), D4 counters. Test row: Less echo / Much less echo only | **Not tested yet** |
+| **v81** | Made permanent: **F8** UI thread no longer waits for its paint (present waits GPU-side), **F14** repaint once per new game frame (presenter; overlay's 60 Hz cap removed), D4 counters. Test row: Less echo / Much less echo only | Owner picked **Much less echo** (rear 0.25) |
+| **v82** | Wrap-up: F13 rear channels fixed at 0.25; Test row and all test switches removed (no TT_TEST left). Final state: rallies ~43–45 FPS at 60, every frame shown; steady 40 at 120 Hz with much lower load | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -207,60 +208,40 @@ narrower condition). For anything else, `bash tools/use_version.sh <n>` builds a
 
 ## 6. Current understanding of the bottleneck
 
-Per gameplay frame (~26–28 ms, Turnip V38):
+State at v82, AYN Thor (Adreno 740, Turnip Gen8 V38), rallies at 720p with FXAA:
 
-- The game thread spends ~95% of its time spinning in `sub_82359DC0` (BlockOnFence), waiting
-  for the GPU emulation to catch up. The CP thread is ~30% busy. The CPU isn't the limit.
-- There are two submissions per guest frame. Vulkan timestamps say ~13–14 ms of GPU work per
-  frame (~7 ms per submission).
-- Timeline pattern, every frame: after the frame's swap submission ends (by its last
-  timestamp, which is now *after* the marker write), the GPU shows ~11–14 ms with **no
-  timestamps** before the next queued submission starts. The marker for the finished
-  submission becomes visible to the CPU at **the same moment** the next submission starts.
-- Working hypothesis: the timestamps don't cover all of the GPU's real work. The Adreno 7xx
-  may record them before the work actually drains (concurrent binning / BV vs BR pipes, or
-  cache flushes at barriers), so the GPU is genuinely busy ~26 ms per frame. That work
-  **doesn't scale with resolution**, which points at per-command overhead. The prime suspect
-  is the ~1000 `vkCmdPipelineBarrier` calls per frame (each a full drain + cache flush on
-  Adreno), plus ~340 render passes, ~570 copies, ~185 compute dispatches and ~43 MB of
-  texture re-conversion per frame.
-- Other per-frame costs worth attacking: texture re-uploads (~55–70 texture loads, ~43 MB per
-  frame, caused by write-watch invalidations, ~1600–2000 faults/s) and render-target
-  ownership transfers in Xenia's render target cache.
-
-> **Update (v51):** the bottleneck is GPU load. The GPU is 99% busy at 680 MHz during rallies,
-> and the per-frame "gap" in the timeline is GPU work the timestamps don't capture. Note that the
-> launcher's 540p option may not lower the game's internal render resolution, so pixel cost
-> isn't fully ruled out. Next: measure categories by removing them (texture reloads first, v52),
-> then resolves/RT transfers, then game-side effects (depth-of-field blur in replays, shadows,
-> light shafts).
+- **The GPU is the limit**: kgsl reports it 99% busy at its top clock (680 MHz) in rallies.
+  Vulkan timestamps undercount (~13 of ~23 ms), so don't trust them for totals.
+- The work is spread thin. Halving the main pass's pixels only saved ~1.6 ms (v72); the
+  F10–F12 skips, F9 and the game-MSAA override removed the big single items. What's left is
+  Xenos emulation overhead spread over ~400 main-pass draws, ~30 resolves, ~60 texture loads,
+  ~400 uploads and ~1000 barriers per frame, plus the game's own rendering.
+- CPU: no longer a concern. The game's GPU-fence spin is now a sleep (~86% → ~21% of a core),
+  texture hashing is ~3.5 MB/frame (was 42), the GPU thread is ~30–45% of a core.
+- Presentation: since F8/F14 the screen shows every game frame (before v81 only about half).
+- At 40 FPS on the 120 Hz screen the load drops a lot (GPU thread ~25%, game main thread ~10%).
 
 ## 7. Suggested next steps
 
-### Pinned (revisit for small wins)
-- **Shadows / pass B** (pinned by the owner, keep shadows): pass B uses 8 pixel shaders. The real shadows are just `f895` + `8cc4` (~7 draws); the background is mostly `a452` (~50 draws). All of pass B skipped was only ~+0.7 FPS (v70), so not worth trading looks for. Revisit only if needed.
-- **Turnip sysmem** (`TU_DEBUG=sysmem`): owner may add it as a launcher option later. v57 ~41.2 vs 40.8
-  (with AA off); v62: +0.4 with FXAA, −0.0 with AA off, i.e. within run-to-run noise so far.
-- AA Off = +1.3 FPS (v62); stays a launcher choice (owner).
+The owner considers the port finished at v82. If work resumes:
 
+1. **A native (high-level) renderer** is the realistic way to a fixed 60 FPS: hook the game's
+   D3D calls and draw with Vulkan directly, shaders pre-translated, no Xenos emulation. See the
+   Naruto recomps in section 2. Multi-month: Table Tennis is RAGE-engine, and the reference is
+   PC-only.
+2. Smaller, still open: RAGE developer switches like the MCLA port's `perf_options` (visual
+   changes, so owner's call); fewer barriers or texture invalidations inside the SDK (low
+   expected gain per v49–v50).
+3. Re-check the visual-risk table (F10–F12) whenever a new venue, character or mode looks wrong:
+   Hidden passes → Drawn.
 
-1. The ~11–14 ms GPU gap after each frame's swap submission is **also present in menus** (where
-   frames are short enough to absorb it), so it's a fixed per-frame latency, not workload.
-   It matches the ~12–14 ms the KGSL fence query blocks for. Suspect: the driver/kernel only
-   releases the next submission once the previous one's completion is processed. Next A/B:
-   Qualcomm's proprietary driver (e.g. v863.1 for A7xx) vs Turnip V38.
-2. If merging saves few calls, find **where the barriers come from** (render target cache
-   transitions, texture cache loads, shared-memory uploads, `SubmitBarriers`). Count per
-   call site and reduce redundant ones (e.g. barriers with identical src/dst for unchanged
-   layouts, per-texture barriers that could be batched before a pass).
-3. Reduce **texture re-conversion**: why are the same textures reloaded every frame?
-   Check whether the game or resolves write to pages overlapping texture memory,
-   triggering write-watch invalidation. Caching or coarser invalidation could cut ~43 MB/frame.
-4. Verify the **"hidden GPU time"** theory directly. For example, add TOP_OF_PIPE timestamps
-   at submission start next to the BOTTOM_OF_PIPE ones, or time a submission with no
-   barriers. Or check whether Turnip exposes a way to disable concurrent binning on a7xx.
-5. Game-side detail reductions are an option if the emulator overhead can't be cut enough
-   (the MCLA port did this: shadows/blur), along with the light-shaft pass.
+### Pinned / decided
+- **Shadows / pass B**: keep the shadows (owner). Real shadows are shaders `f895` + `8cc4`
+  (~7 draws); the background is mostly `a452`. All of pass B is only ~+0.7 FPS.
+- **Turnip sysmem**: within noise in three measurements; not added.
+- **AA Off** = +1.3 FPS; stays a launcher choice (owner).
+- **40 FPS**: done (Frame rate option, asks for 120 Hz).
+- **Frame pacing** from the PC version: done (v78).
 
 ## 8. Communication notes for the owner
 
