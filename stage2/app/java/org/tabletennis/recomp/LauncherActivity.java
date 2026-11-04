@@ -58,6 +58,7 @@ public final class LauncherActivity extends Activity {
     private boolean busy;
     private String isoProgress;
     private TitleCard titleCard;
+    private PongView pong;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
         @Override public void run() { updateClock(); handler.postDelayed(this, 15000); }
@@ -131,12 +132,14 @@ public final class LauncherActivity extends Activity {
         super.onResume();
         hideSystemBars();
         handler.post(tick);
+        if (pong != null) pong.setRunning(true);
         if (!busy) { loadDrivers(); render(); }
         showTitleCard();
     }
 
     @Override protected void onPause() {
         handler.removeCallbacks(tick);
+        if (pong != null) pong.setRunning(false);
         if (titleCard != null) { titleCard.dismiss(); titleCard = null; }
         super.onPause();
     }
@@ -227,9 +230,18 @@ public final class LauncherActivity extends Activity {
         battery = text(14, GREY);
         root.addView(battery, frame(Gravity.TOP | Gravity.END, 0, dp(8), dp(14), 0));
 
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        // The empty strip left of the menu: a self-playing vertical Pong (PongView).
+        pong = new PongView(this, WHITE, GREY, DIM);
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(screenW / 4 - dp(40),
+                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP | Gravity.START);
+        plp.leftMargin = dp(20);
+        plp.topMargin = dp(34);
+        plp.bottomMargin = dp(40);
+        root.addView(pong, plp);
+
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        int screenW = getResources().getDisplayMetrics().widthPixels;
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
         lp.leftMargin = screenW / 4;

@@ -181,6 +181,7 @@ were removed in v56; the history table below says what each experiment found.
 | **v80** | F13 stereo mix permanent; Test row: Paint without waiting, No wait + new frames only, **Less echo** (`TT_TEST=echo50`: rear channels 0.5 in the stereo fold instead of 0.707), **Much less echo** (`echo25`: 0.25) | Built v79 instead; echo tests carried to v81 |
 | **v81** | Made permanent: **F8** UI thread no longer waits for its paint (present waits GPU-side), **F14** repaint once per new game frame (presenter; overlay's 60 Hz cap removed), D4 counters. Test row: Less echo / Much less echo only | Owner picked **Much less echo** (rear 0.25) |
 | **v82** | Wrap-up: F13 rear channels fixed at 0.25; Test row and all test switches removed (no TT_TEST left). Final state: rallies ~43–45 FPS at 60, every frame shown; steady 40 at 120 Hz with much lower load | — |
+| **v83** | Start screen: self-playing vertical Pong in the empty strip left of the menu (`PongView.java`, ported from the owner's canvas Pong in github.com/henroids/not_portfolio `js/script.js`; both paddles computer-controlled, pixel grid, start-screen colours; runs only while the start screen is in front) | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
