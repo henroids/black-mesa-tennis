@@ -22,10 +22,10 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
-    // TEMPORARY test round (v78, lower CPU/GPU load): remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "Repaint on new frames", "Less texture hashing", "Both",
+    // TEMPORARY test round (v79): remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Paint without waiting", "No wait + new frames only",
             "Stereo sound mix"};
-    static final String[] TEST_VALUES = {"", "newframes", "lesshash", "both", "stereo"};
+    static final String[] TEST_VALUES = {"", "nowait", "nowaitnew", "stereo"};
     int test = 0;
 
 
@@ -50,7 +50,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.perfLog = p.getBoolean("perf_log", true);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
-        s.test = clamp(p.getInt("test_v78", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v79", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -63,7 +63,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putBoolean("perf_log", perfLog)
                 .putInt("hidden_passes", hiddenPasses)
-                .putInt("test_v78", test)
+                .putInt("test_v79", test)
                 .commit();
     }
 

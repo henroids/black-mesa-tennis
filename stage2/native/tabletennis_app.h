@@ -103,11 +103,11 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
     // The presenter uses a mailbox swapchain, so without a cap this UI thread redraws
     // hundreds of times a second (85% of a big core in the v5 logs). Cap it at 60 Hz
     // with a sleep; the game itself is paced separately in the VdSwap hook.
-    // TEMPORARY test (v78): with TT_TEST=newframes/both the presenter waits for a new
+    // TEMPORARY test (v79): with TT_TEST=nowaitnew the presenter waits for a new
     // game frame before painting instead (patch_sdk_vulkan_fixes.py T1).
     static const bool tt_newframes = [] {
       const char* v = std::getenv("TT_TEST");
-      return v && (std::string_view(v) == "newframes" || std::string_view(v) == "both");
+      return v && std::string_view(v) == "nowaitnew";
     }();
     if (!tt_newframes) {
       using clock = std::chrono::steady_clock;

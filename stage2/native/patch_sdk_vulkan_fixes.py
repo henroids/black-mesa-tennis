@@ -15,6 +15,7 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F7        presenter's submission tracker doesn't query very young fences (KGSL ~13 ms)
   F8        presenter: swapchain acquire waited on the CPU, present without semaphores
   F9        skip re-converting textures whose guest bytes didn't change          ~+1 FPS
+            (and don't hash textures that will reload anyway: less CPU)
   F10       skip two depth-only passes with no visible effect (640/1120 wide)     ~+2 FPS
   F11       skip a full-size pass that writes neither colour nor depth (~96 draws) ~+0.5 FPS
   F12       skip render-target copies (EDRAM transfers between passes, ~26/frame)  ~+1.4 FPS
@@ -325,6 +326,14 @@ edit(PRESENTER, (
                                 VK_NULL_HANDLE, &swapchain_image_index);
 """,
     """  uint32_t swapchain_image_index;
+  // TEMPORARY test (v79, TT_TEST=nowait / nowaitnew): the paint signals the present
+  // semaphore and the present waits for it on the GPU side, instead of the UI thread
+  // waiting for the paint on the CPU (which sits behind the game's queued GPU work, so the
+  // UI thread could only paint ~22 times a second while the game made ~44 frames).
+  static const bool tt_nowait = [] {
+    const char* v = std::getenv("TT_TEST");
+    return v && std::strncmp(v, "nowait", 6) == 0;
+  }();
   // tt-android F8: acquire with a CPU fence (one per painting thread) instead of a
   // semaphore the GPU queue would have to wait on.
   thread_local VkFence tt_acquire_fence = VK_NULL_HANDLE;
@@ -352,20 +361,23 @@ edit(PRESENTER, (
   submit_info.pWaitDstStageMask = nullptr;
 """), (
     "  submit_info.signalSemaphoreCount = 1;\n  submit_info.pSignalSemaphores = &present_semaphore;\n",
-    "  submit_info.signalSemaphoreCount = 0;  // tt-android F8: present waits on the CPU\n"
-    "  submit_info.pSignalSemaphores = nullptr;\n"), (
+    "  // tt-android F8: present waits on the CPU (or, with nowait, on the GPU side)\n"
+    "  submit_info.signalSemaphoreCount = tt_nowait ? 1 : 0;\n"
+    "  submit_info.pSignalSemaphores = tt_nowait ? &present_semaphore : nullptr;\n"), (
     "  VkPresentInfoKHR present_info;\n  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;\n"
     "  present_info.pNext = nullptr;\n  present_info.waitSemaphoreCount = 1;\n"
     "  present_info.pWaitSemaphores = &present_semaphore;\n",
     "  // tt-android F8: wait for the paint on the CPU, then present without semaphores.\n"
-    "  paint_context_.submission_tracker.AwaitSubmissionCompletion(\n"
-    "      paint_context_.submission_tracker.GetCurrentSubmission() - 1);\n"
+    "  if (!tt_nowait) {\n"
+    "    paint_context_.submission_tracker.AwaitSubmissionCompletion(\n"
+    "        paint_context_.submission_tracker.GetCurrentSubmission() - 1);\n"
+    "  }\n"
     "  VkPresentInfoKHR present_info;\n  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;\n"
-    "  present_info.pNext = nullptr;\n  present_info.waitSemaphoreCount = 0;\n"
-    "  present_info.pWaitSemaphores = nullptr;\n"), (
+    "  present_info.pNext = nullptr;\n  present_info.waitSemaphoreCount = tt_nowait ? 1 : 0;\n"
+    "  present_info.pWaitSemaphores = tt_nowait ? &present_semaphore : nullptr;\n"), (
     # the semaphores above are no longer used
-    "  VkPipelineStageFlags acquire_semaphore_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;\n", ""), (
-    "  VkSemaphore present_semaphore = paint_submission.present_semaphore();\n", ""))
+    "  VkPipelineStageFlags acquire_semaphore_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;\n", ""),
+    includes=("#include <cstdlib>", "#include <cstring>"))
 done.append("F8 presenter acquires and presents without GPU-side semaphore waits")
 
 # ---- F9 Every frame the emulator re-converted ~60 textures (~43 MB) on the GPU because the
@@ -408,19 +420,16 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
     if (gpu_written) __atomic_fetch_add(&tt_tex_stats[2], 1, __ATOMIC_RELAXED);
     memory::Memory& mem = shared_memory().tt_guest_memory();
     const TextureKey key = texture.key();
-    // TEMPORARY test (v78, TT_TEST=lesshash/both): don't hash what will reload anyway.
-    // GPU-written textures always reload; a CPU-written one whose bytes changed on its last
-    // 8 loads is reloaded without hashing, re-checked every 16th load.
-    static const bool tt_lesshash = [] {
-      const char* v = std::getenv("TT_TEST");
-      return v && (std::strcmp(v, "lesshash") == 0 || std::strcmp(v, "both") == 0);
-    }();
+    // Don't hash what will reload anyway (v78: 42 -> 3.5 MB hashed per frame, GPU thread
+    // ~64% -> ~47% of a core): GPU-written textures always reload, and a CPU-written one
+    // whose bytes changed on its last 8 loads is reloaded without hashing, re-checked every
+    // 16th load.
     auto it = states.find(&texture);
     const bool known = it != states.end() && std::memcmp(&it->second.key, &key, sizeof(key)) == 0;
     const bool had_hash = known && (it->second.has_base || it->second.has_mips);
-    const bool streaky = tt_lesshash && known && !gpu_written && it->second.streak >= 8 &&
+    const bool streaky = known && !gpu_written && it->second.streak >= 8 &&
                          (++it->second.since_check & 15) != 0;
-    const bool skip_hash = tt_lesshash && (gpu_written || streaky);
+    const bool skip_hash = gpu_written || streaky;
     uint64_t hash_base = 0, hash_mips = 0;
     if (!skip_hash && load_base && texture.GetGuestBaseSize()) {
       hash_base = XXH3_64bits(mem.TranslatePhysical(uint32_t(key.base_page) << 12),
@@ -556,12 +565,11 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v78)
+# ========================================================= TEMPORARY TEST ROUND (v79)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
-# Two load reductions, no intended visual change (TT_TEST=newframes / lesshash / both),
-# and a sound test (TT_TEST=stereo, T3):
-#   newframes  the screen is repainted when the game has a new frame (not 60x a second)
-#   lesshash   F9 skips hashing textures that will reload anyway (see F9)
+# TT_TEST=nowait     F8 presents without the UI thread waiting for its paint (see F8)
+# TT_TEST=nowaitnew  nowait + the screen is repainted only when the game has a new frame (T1)
+# TT_TEST=stereo     the SDK's stereo sound mix instead of Android's (T3)
 
 # ---- T1 Repaint on new frames. The overlay (an ImGui UI drawer) keeps the UI thread
 #      repainting; tabletennis_app.h caps that at 60 Hz with a sleep, but the game makes
@@ -579,7 +587,7 @@ edit("src/ui/presenter.cpp", (
     "  __atomic_fetch_add(&tt_present_stats[1], 1, __ATOMIC_RELAXED);  // tt-android T1\n"
     "  static const bool tt_newframes = [] {\n"
     "    const char* v = std::getenv(\"TT_TEST\");\n"
-    "    return v && (std::strcmp(v, \"newframes\") == 0 || std::strcmp(v, \"both\") == 0);\n"
+    "    return v && std::strcmp(v, \"nowaitnew\") == 0;\n"
     "  }();\n"
     "  if (tt_newframes) {\n"
     "    using clock = std::chrono::steady_clock;\n"
@@ -600,7 +608,7 @@ edit("src/ui/presenter.cpp", (
     prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_present_stats[4] = {};  // T1\n',
     includes=("#include <chrono>", "#include <cstdint>", "#include <cstdlib>", "#include <cstring>",
               "#include <thread>"))
-done.append("T1 test: TT_TEST=newframes/both repaints only on new game frames; T2 lesshash in F9")
+done.append("T1 test: TT_TEST=nowaitnew repaints only on new game frames")
 
 # ---- T3 Stereo sound mix (TT_TEST=stereo). Android reports its output as 6 channels, so
 #      the emulator hands it 5.1 and Android folds that down to the Thor's two speakers itself
