@@ -34,7 +34,7 @@
 
 ## Status
 
-Playable from start to finish. Measured on an **AYN Thor** (Snapdragon 8 Gen 2 / Adreno 740)
+Playable. Measured on an **AYN Thor** (Snapdragon 8 Gen 2 / Adreno 740)
 with the recommended settings below:
 
 | Part of the game | Frame rate |
@@ -44,9 +44,10 @@ with the recommended settings below:
 | Rallies (40 FPS setting, 120 Hz screen) | steady 40 FPS, much lower CPU/GPU load |
 | Rallies (720p, anti-aliasing Off) | ~45–46 FPS |
 
-The target is a steady 60 FPS in matches. During rallies the GPU is the limit (it runs at 99% at
-its top clock), so progress now comes from many small reductions in GPU work; see
-[HANDOFF.md](HANDOFF.md) for the full history of what was tried and measured.
+A steady 60 FPS in matches isn't reached: during rallies the graphics chip is the limit (it runs
+at 99% at its top clock). The realistic route to 60 would be a native renderer instead of Xbox 360
+GPU emulation, a much bigger project; see [HANDOFF.md](HANDOFF.md) for that and for the full
+history of what was tried and measured.
 
 Other Android devices with a recent Adreno GPU may work but haven't been tested.
 
