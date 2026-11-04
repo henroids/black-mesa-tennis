@@ -22,8 +22,9 @@ final class Settings {
     int hiddenPasses = 0;
 
     // TEMPORARY test round (v78, lower CPU/GPU load): remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "Repaint on new frames", "Less texture hashing", "Both"};
-    static final String[] TEST_VALUES = {"", "newframes", "lesshash", "both"};
+    static final String[] TEST_LABELS = {"Off", "Repaint on new frames", "Less texture hashing", "Both",
+            "Stereo sound mix"};
+    static final String[] TEST_VALUES = {"", "newframes", "lesshash", "both", "stereo"};
     int test = 0;
 
 

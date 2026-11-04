@@ -50,6 +50,9 @@ public final class GameActivity extends SDLActivity {
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
         if (settings.hiddenPasses == 1) setEnv("TT_DRAW_ALL_PASSES", "1");
+        // The "Loading main menu" screen (drawn natively) uses the start screen's pixel font.
+        File uiFont = copyAsset("fonts/GamePocket-Regular.ttf", new File(getFilesDir(), "GamePocket-Regular.ttf"));
+        if (uiFont != null) setEnv("TT_UI_FONT", uiFont.getAbsolutePath());
         if (settings.test > 0) setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);  // TEMPORARY (v78)
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
@@ -391,6 +394,22 @@ public final class GameActivity extends SDLActivity {
             }
         } catch (java.io.IOException e) {
             Log.w(TAG, "symbol lists not copied", e);
+        }
+    }
+
+    /** Copies one APK asset to a file once; returns the file, or null if it couldn't. */
+    private File copyAsset(String asset, File out) {
+        if (out.isFile() && out.length() > 0) return out;
+        try (java.io.InputStream in = getAssets().open(asset);
+             java.io.OutputStream o = new java.io.FileOutputStream(out)) {
+            byte[] buf = new byte[1 << 16];
+            int n;
+            while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+            return out;
+        } catch (java.io.IOException e) {
+            Log.w(TAG, "asset not copied: " + asset, e);
+            out.delete();
+            return null;
         }
     }
 

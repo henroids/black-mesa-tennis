@@ -558,7 +558,8 @@ done.append("D2/D3 GPU work and texture counters")
 
 # ========================================================= TEMPORARY TEST ROUND (v78)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
-# Two load reductions, no intended visual change (TT_TEST=newframes / lesshash / both):
+# Two load reductions, no intended visual change (TT_TEST=newframes / lesshash / both),
+# and a sound test (TT_TEST=stereo, T3):
 #   newframes  the screen is repainted when the game has a new frame (not 60x a second)
 #   lesshash   F9 skips hashing textures that will reload anyway (see F9)
 
@@ -600,5 +601,20 @@ edit("src/ui/presenter.cpp", (
     includes=("#include <chrono>", "#include <cstdint>", "#include <cstdlib>", "#include <cstring>",
               "#include <thread>"))
 done.append("T1 test: TT_TEST=newframes/both repaints only on new game frames; T2 lesshash in F9")
+
+# ---- T3 Stereo sound mix (TT_TEST=stereo). Android reports its output as 6 channels, so
+#      the emulator hands it 5.1 and Android folds that down to the Thor's two speakers itself
+#      (owner: ball hits sound muffled / hollow / distant). With stereo, the SDK's own 5.1 ->
+#      stereo fold (centre and surrounds at -3 dB, the path it uses for stereo devices) runs
+#      instead and Android gets plain stereo.
+edit("src/audio/sdl/sdl_audio_driver.cpp", (
+    "  if (obtained_spec.channels <= 2) {\n",
+    "  static const bool tt_stereo = [] {  // tt-android T3\n"
+    "    const char* v = std::getenv(\"TT_TEST\");\n"
+    "    return v && std::strcmp(v, \"stereo\") == 0;\n"
+    "  }();\n"
+    "  if (obtained_spec.channels <= 2 || tt_stereo) {\n"),
+    includes=("#include <cstdlib>", "#include <cstring>"))
+done.append("T3 test: TT_TEST=stereo uses the SDK's stereo fold instead of Android's 5.1 downmix")
 
 print("\n".join(done))

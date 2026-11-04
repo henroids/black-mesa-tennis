@@ -3,6 +3,7 @@
 #pragma once
 
 #include <rex/cvar.h>
+#include <cmath>
 #include <cstdlib>
 #include <string_view>
 #include <rex/filesystem.h>
@@ -50,8 +51,10 @@ inline rex::memory::Memory* g_tt_memory = nullptr;
 
 class FpsOverlayDialog : public rex::ui::ImGuiDialog {
  public:
-  explicit FpsOverlayDialog(rex::ui::ImGuiDrawer* drawer, ImFont* loading_font)
-      : rex::ui::ImGuiDialog(drawer), loading_font_(loading_font) {}
+  explicit FpsOverlayDialog(rex::ui::ImGuiDrawer* drawer, ImFont* loading_font,
+                            ImFont* loading_sub_font)
+      : rex::ui::ImGuiDialog(drawer), loading_font_(loading_font),
+        loading_sub_font_(loading_sub_font) {}
 
   void SetVisible(bool visible) { visible_ = visible; }
   bool IsVisible() const { return visible_; }
@@ -66,16 +69,33 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
       draw->AddRectFilled(viewport->Pos,
           ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
           IM_COL32(0, 0, 0, 255));
-      const char* message = "LOADING MAIN MENU...";
-      auto* font = loading_font_ ? loading_font_ : ImGui::GetFont();
-      // Use the baked loading face size, independent of the smaller overlay font.
-      const float font_size = loading_font_ ? loading_font_->LegacySize
-                                            : ImGui::GetFontSize() * 3.0f;
-      const auto size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, message);
-      draw->AddText(font, font_size,
-                    ImVec2(viewport->Pos.x + (viewport->Size.x - size.x) * 0.5f,
-                          viewport->Pos.y + (viewport->Size.y - size.y) * 0.5f),
-                    IM_COL32(255, 255, 255, 255), message);
+      if (loading_sub_font_) {
+        // Start-screen look (Android launcher / title card): black, GamePocket pixel font,
+        // white title, grey line under it, left-aligned and vertically centred. Positions are
+        // whole pixels and the font is baked at whole multiples of its pixel grid, so the
+        // glyphs stay sharp.
+        const char* title = "Rockstar Table Tennis";
+        const char* line = "Loading main menu...";
+        const float title_px = loading_font_->LegacySize, line_px = loading_sub_font_->LegacySize;
+        const float gap = std::floor(line_px * 0.6f);
+        const float x = std::floor(viewport->Pos.x + viewport->Size.y * 0.08f);
+        const float y = std::floor(viewport->Pos.y +
+                                   (viewport->Size.y - (title_px + gap + line_px)) * 0.5f);
+        draw->AddText(loading_font_, title_px, ImVec2(x, y), IM_COL32(250, 250, 250, 255), title);
+        draw->AddText(loading_sub_font_, line_px, ImVec2(x, y + title_px + gap),
+                      IM_COL32(154, 154, 154, 255), line);
+      } else {
+        const char* message = "LOADING MAIN MENU...";
+        auto* font = loading_font_ ? loading_font_ : ImGui::GetFont();
+        // Use the baked loading face size, independent of the smaller overlay font.
+        const float font_size = loading_font_ ? loading_font_->LegacySize
+                                              : ImGui::GetFontSize() * 3.0f;
+        const auto size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, message);
+        draw->AddText(font, font_size,
+                      ImVec2(viewport->Pos.x + (viewport->Size.x - size.x) * 0.5f,
+                            viewport->Pos.y + (viewport->Size.y - size.y) * 0.5f),
+                      IM_COL32(255, 255, 255, 255), message);
+      }
     }
     // Pace presentation thread to target framerate limit
     int32_t target_fps = REXCVAR_GET(framerate);
@@ -164,6 +184,7 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
 
  private:
   ImFont* loading_font_ = nullptr;
+  ImFont* loading_sub_font_ = nullptr;  // set only when the GamePocket font is available
   bool visible_ = false;
 };
 
@@ -350,6 +371,26 @@ class TabletennisApp : public rex::ReXApp {
     // Keep the regular overlay font first. The loading message gets its own
     // TrueType face baked at 3x size, with extra raster resolution for DPI.
     if (atlas->Fonts.empty()) atlas->AddFontDefault();
+#if defined(__ANDROID__)
+    // The app copies the start screen's GamePocket pixel font out of the APK and passes its
+    // path in TT_UI_FONT. One font pixel is 1/20 em, so 60 px and 40 px give exactly 3 and 2
+    // screen pixels per font pixel; no oversampling keeps the edges hard.
+    if (const char* ui_font = std::getenv("TT_UI_FONT");
+        ui_font && std::filesystem::exists(ui_font)) {
+      ImFontConfig pixel;
+      pixel.OversampleH = 1;
+      pixel.OversampleV = 1;
+      pixel.PixelSnapH = true;
+      static const ImWchar pixel_ranges[] = {0x20, 0x7E, 0};
+      loading_font_ = atlas->AddFontFromFileTTF(ui_font, 60.0f, &pixel, pixel_ranges);
+      loading_sub_font_ = atlas->AddFontFromFileTTF(ui_font, 40.0f, &pixel, pixel_ranges);
+      if (loading_font_ && loading_sub_font_) {
+        REXLOG_INFO("Tabletennis: loading screen uses the start-screen font {}", ui_font);
+        return;
+      }
+      loading_font_ = loading_sub_font_ = nullptr;
+    }
+#endif
 #if defined(_WIN32)
     wchar_t windows_dir[MAX_PATH]{};
     if (!GetWindowsDirectoryW(windows_dir, MAX_PATH)) return;
@@ -379,7 +420,7 @@ class TabletennisApp : public rex::ReXApp {
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
     imgui_drawer_ = drawer;
     if (drawer) {
-      fps_overlay_ = std::make_unique<FpsOverlayDialog>(drawer, loading_font_);
+      fps_overlay_ = std::make_unique<FpsOverlayDialog>(drawer, loading_font_, loading_sub_font_);
       bool initial_visible = REXCVAR_GET(show_fps);
       fps_overlay_->SetVisible(initial_visible);
       drawer->AddDialog(fps_overlay_.get());
@@ -437,6 +478,7 @@ class TabletennisApp : public rex::ReXApp {
   }
 
   ImFont* loading_font_ = nullptr;
+  ImFont* loading_sub_font_ = nullptr;
   std::unique_ptr<FpsOverlayDialog> fps_overlay_;
   rex::ui::ImGuiDrawer* imgui_drawer_ = nullptr;
 };
