@@ -373,7 +373,7 @@ class TabletennisApp : public rex::ReXApp {
     if (atlas->Fonts.empty()) atlas->AddFontDefault();
 #if defined(__ANDROID__)
     // The app copies the start screen's GamePocket pixel font out of the APK and passes its
-    // path in TT_UI_FONT. One font pixel is 1/20 em, so 60 px and 40 px give exactly 3 and 2
+    // path in TT_UI_FONT. One font pixel is 1/20 em, so 40 px and 20 px give exactly 2 and 1
     // screen pixels per font pixel; no oversampling keeps the edges hard.
     if (const char* ui_font = std::getenv("TT_UI_FONT");
         ui_font && std::filesystem::exists(ui_font)) {
@@ -382,8 +382,8 @@ class TabletennisApp : public rex::ReXApp {
       pixel.OversampleV = 1;
       pixel.PixelSnapH = true;
       static const ImWchar pixel_ranges[] = {0x20, 0x7E, 0};
-      loading_font_ = atlas->AddFontFromFileTTF(ui_font, 60.0f, &pixel, pixel_ranges);
-      loading_sub_font_ = atlas->AddFontFromFileTTF(ui_font, 40.0f, &pixel, pixel_ranges);
+      loading_font_ = atlas->AddFontFromFileTTF(ui_font, 40.0f, &pixel, pixel_ranges);
+      loading_sub_font_ = atlas->AddFontFromFileTTF(ui_font, 20.0f, &pixel, pixel_ranges);
       if (loading_font_ && loading_sub_font_) {
         REXLOG_INFO("Tabletennis: loading screen uses the start-screen font {}", ui_font);
         return;
