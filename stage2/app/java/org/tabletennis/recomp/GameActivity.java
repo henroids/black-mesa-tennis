@@ -53,7 +53,7 @@ public final class GameActivity extends SDLActivity {
         // The "Loading main menu" screen (drawn natively) uses the start screen's pixel font.
         File uiFont = copyAsset("fonts/GamePocket-Regular.ttf", new File(getFilesDir(), "GamePocket-Regular.ttf"));
         if (uiFont != null) setEnv("TT_UI_FONT", uiFont.getAbsolutePath());
-        if (settings.test > 0) setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);  // TEMPORARY (v79)
+        if (settings.test > 0) setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);  // TEMPORARY (v80)
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
             File logs = GameFiles.logsDir(this);
