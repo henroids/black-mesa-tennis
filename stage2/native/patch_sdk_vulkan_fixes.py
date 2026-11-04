@@ -526,7 +526,7 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v75)
+# ========================================================= TEMPORARY TEST ROUND (v76)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
 # v74: skipping the render-target copies (EDRAM ownership transfers between host render
 # targets: ~26 draws, ~4.7 screens of pixels per frame) gave +1.4 FPS and a normal-looking

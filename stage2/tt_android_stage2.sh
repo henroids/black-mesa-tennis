@@ -50,6 +50,8 @@ cp "$KIT2/native/CMakeLists.txt" "$P/CMakeLists.txt"           # -Bsymbolic-func
 cp "$KIT2/native/tt_profiler.cpp" "$P/src/tt_profiler.cpp"     # built-in sampling profiler
 python3 "$KIT2/native/patch_game_msaa.py" "$P/generated/default" > "$LOGS/02-game-edits.log" 2>&1 \
   || fail "game MSAA edit did not apply (logs2/02-game-edits.log)"
+python3 "$KIT2/native/patch_game_gpu_wait.py" "$P/generated/default" >> "$LOGS/02-game-edits.log" 2>&1 \
+  || fail "game GPU-wait edit failed (logs2/02-game-edits.log)"
 sed 's/^/  /' "$LOGS/02-game-edits.log"
 # SDK changes are applied to FRESH sources every build: a clean copy of the SDK (with only
 # Stage 1's Android patches) is staged, today's patch_sdk_vulkan_fixes.py is applied to it,

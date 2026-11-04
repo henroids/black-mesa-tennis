@@ -22,9 +22,9 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
-    // TEMPORARY test round (v75): remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "Skip RT copies"};
-    static final String[] TEST_VALUES = {"", "noxfer"};
+    // TEMPORARY test round (v76): remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Skip RT copies", "Calmer GPU wait"};
+    static final String[] TEST_VALUES = {"", "noxfer", "calmwait"};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -47,7 +47,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v75", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v76", 0), TEST_LABELS.length);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         return s;
     }
@@ -61,7 +61,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v75", test)
+                .putInt("test_v76", test)
                 .putInt("hidden_passes", hiddenPasses)
                 .commit();
     }
