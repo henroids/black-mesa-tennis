@@ -75,7 +75,50 @@ static void TtRecordFrame(float frame_ms) {
   }
 }
 
+// Frame limiter, after the PC version's v1.0.6-v1.1.2 pacing rework: it runs BEFORE the
+// guest frame is handed to the GPU (start of VdSwap) and waits for absolute deadlines one
+// period apart, so sleep overshoot never adds up. A frame that is already late goes out at
+// once and the next deadline is rebased from it: no extra wait after a stall and no burst of
+// short frames to catch up. Android sleeps the whole wait (no spinning).
+namespace {
+class TtFrameSchedule {
+ public:
+  std::chrono::steady_clock::time_point Next(std::chrono::steady_clock::time_point now, int32_t fps) {
+    const auto period = std::chrono::nanoseconds(1'000'000'000LL / fps);
+    if (!started_ || period != period_) {
+      period_ = period;
+      deadline_ = now;
+      started_ = true;
+    }
+    deadline_ += period;
+    if (deadline_ < now) deadline_ = now;
+    return deadline_;
+  }
+ private:
+  std::chrono::nanoseconds period_{0};
+  std::chrono::steady_clock::time_point deadline_{};
+  bool started_ = false;
+};
+}  // namespace
+
 extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
+  if (const int32_t target_fps = REXCVAR_GET(framerate); target_fps > 0) {
+    static TtFrameSchedule schedule;
+    const auto deadline = schedule.Next(std::chrono::steady_clock::now(), target_fps);
+#if defined(__ANDROID__)
+    std::this_thread::sleep_until(deadline);
+#else
+    if (deadline - std::chrono::steady_clock::now() > std::chrono::milliseconds(2)) {
+      std::this_thread::sleep_until(deadline - std::chrono::milliseconds(1));
+    }
+    while (std::chrono::steady_clock::now() < deadline) {
+#if defined(_M_X64) || defined(__x86_64__)
+      _mm_pause();
+#endif
+    }
+#endif
+  }
+
   // Call original VdSwap to commit guest frame to GPU
   __imp__VdSwap(ctx, base);
 
@@ -126,35 +169,6 @@ extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
     }
   }
 
-  // High-precision frame limiter for high refresh rate modes
-  int32_t target_fps = REXCVAR_GET(framerate);
-  if (target_fps > 0) {
-    using clock = std::chrono::steady_clock;
-    static auto last_swap = clock::now();
-    const auto target_duration = std::chrono::nanoseconds(1'000'000'000LL / target_fps);
-
-    auto now = clock::now();
-    auto elapsed = now - last_swap;
-    if (elapsed < target_duration) {
-#if defined(__ANDROID__)
-      // Phones: sleep instead of spinning. A spin loop pins a big core at 100%
-      // (ARM has no _mm_pause here), steals time from the game threads and heats
-      // the SoC into throttling. Sleep granularity on Android is well under 1 ms.
-      std::this_thread::sleep_until(last_swap + target_duration);
-#else
-      auto sleep_dur = target_duration - elapsed;
-      if (sleep_dur > std::chrono::milliseconds(2)) {
-        std::this_thread::sleep_for(sleep_dur - std::chrono::milliseconds(1));
-      }
-      while (clock::now() - last_swap < target_duration) {
-#if defined(_M_X64) || defined(__x86_64__)
-        _mm_pause();
-#endif
-      }
-#endif
-    }
-    last_swap = clock::now();
-  }
 }
 
 extern "C" void __imp__Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {

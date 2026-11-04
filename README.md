@@ -144,7 +144,7 @@ approximate, compared with the recommended settings):
 |---|---|---|
 | **Resolution** | 720p · 1440p (2×) | 1440p renders at twice the width and height: sharper, but much heavier, so expect a large FPS drop. |
 | **Anti-aliasing** | Off · FXAA · FXAA (extreme) | Edge smoothing applied to the final image. **Off ≈ +1.3 FPS**. *Extreme* is smoother and a little heavier than FXAA. |
-| **Frame rate** | 60 FPS · 30 FPS · Uncapped | 60 is the game's own target. **30** caps the game at 30, which should feel steadier if you prefer consistency over the ~43 FPS average. *Uncapped* is for testing only. |
+| **Frame rate** | 60 FPS · 40 FPS · 30 FPS · Uncapped | 60 is the game's own target. **40** holds a steady 40 and switches the screen to 120 Hz, where every frame is shown for exactly the same time (needs a 120 Hz screen, like the Thor's). **30** caps at 30 for maximum steadiness and the lowest load. *Uncapped* is for testing only. |
 | **Show FPS** | Off · On | Small FPS counter in the corner. No real cost. |
 | **Shaders** | Async · Wait | *Wait*: everything is drawn correctly, with a brief stutter the first time a screen appears. *Async*: fewer stutters, but objects can pop in for a moment. |
 | **GPU driver** | System · imported drivers | Turnip Gen8 V38 ≈ +2 FPS over older Turnip builds. Qualcomm's own drivers measured slower (~25 FPS) with graphical errors. |

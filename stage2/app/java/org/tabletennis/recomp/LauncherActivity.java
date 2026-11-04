@@ -162,7 +162,7 @@ public final class LauncherActivity extends Activity {
         Runnable save = this::saveSettings;
         rows.add(new Choice("Resolution", new String[]{"720p", "1440p (2x)"}, resolution, save));
         rows.add(new Choice("Anti-aliasing", new String[]{"Off", "FXAA", "FXAA extreme"}, aa, save));
-        rows.add(new Choice("Frame rate", new String[]{"60 FPS", "30 FPS", "Uncapped"}, fps, save));
+        rows.add(new Choice("Frame rate", Settings.FPS_SHORT, fps, save));
         rows.add(new Choice("Show FPS", new String[]{"Off", "On"}, showFps, save));
         rows.add(new Choice("Shaders", new String[]{"Async (may pop in)", "Wait (complete)"}, shaderMode, save));
         rows.add(new Row("GPU driver") {

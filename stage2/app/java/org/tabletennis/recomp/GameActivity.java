@@ -78,6 +78,7 @@ public final class GameActivity extends SDLActivity {
             Log.w(TAG, "could not write sessions.txt", e);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        chooseScreenRefresh(Settings.FPS_VALUES[settings.fps]);
         super.onCreate(savedInstanceState);
         if (settings.perfLog) {
             GameFiles.logsDir(this).mkdirs();
@@ -87,6 +88,32 @@ public final class GameActivity extends SDLActivity {
     }
 
     private ThreadMonitor monitor;
+
+    /** 40 FPS only looks even on a 120 Hz screen (each frame shown for exactly 3 refreshes), so
+     *  ask for the screen's 120 Hz mode then; 30 and 60 FPS get a 60 Hz mode. Logged either way. */
+    private void chooseScreenRefresh(int fps) {
+        android.view.Display display = getWindowManager().getDefaultDisplay();
+        android.view.Display.Mode current = display.getMode();
+        android.view.Display.Mode best = null;
+        StringBuilder modes = new StringBuilder();
+        for (android.view.Display.Mode m : display.getSupportedModes()) {
+            modes.append(String.format(java.util.Locale.ROOT, " %dx%d@%.0f", m.getPhysicalWidth(),
+                    m.getPhysicalHeight(), m.getRefreshRate()));
+            if (m.getPhysicalWidth() != current.getPhysicalWidth()
+                    || m.getPhysicalHeight() != current.getPhysicalHeight()) continue;
+            float hz = m.getRefreshRate();
+            boolean fits = fps == 40 ? Math.abs(hz - 120f) < 1f
+                    : (fps == 60 || fps == 30) && Math.abs(hz - 60f) < 1f;
+            if (fits) best = m;
+        }
+        Log.i(TAG, "Screen modes:" + modes + "; current " + current.getRefreshRate() + " Hz; for "
+                + fps + " FPS using " + (best != null ? best.getRefreshRate() + " Hz" : "the system's choice"));
+        if (best != null) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.preferredDisplayModeId = best.getModeId();
+            getWindow().setAttributes(lp);
+        }
+    }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);

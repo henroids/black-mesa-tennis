@@ -13,8 +13,9 @@ final class Settings {
             "1440p (2x, sharpest on the 1080p screen)"};
     static final String[] AA_LABELS = {"Off", "FXAA", "FXAA (extreme)"};
     static final String[] AA_VALUES = {"none", "fxaa", "fxaa_extreme"};
-    static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped"};
-    static final int[] FPS_VALUES = {60, 30, 0};
+    static final String[] FPS_LABELS = {"60 FPS (console)", "40 FPS (120 Hz screen)", "30 FPS", "Uncapped"};
+    static final String[] FPS_SHORT = {"60 FPS", "40 FPS", "30 FPS", "Uncapped"};
+    static final int[] FPS_VALUES = {60, 40, 30, 0};
 
     // Visual-risk speed-ups (F10-F12: skip render passes and copies with no visible effect so far). Kept
     // switchable so any venue / character / mode can be compared with the original quickly.
@@ -42,7 +43,9 @@ final class Settings {
         Settings s = new Settings();
         s.resolution = clamp(p.getInt("resolution", 0), RESOLUTION_LABELS.length);
         s.aa = clamp(p.getInt("aa", 1), AA_LABELS.length);
-        s.fps = clamp(p.getInt("fps", 0), FPS_LABELS.length);
+        // "fps" was an index into {60, 30, Uncapped} before 40 FPS was added.
+        s.fps = p.contains("fps_v2") ? clamp(p.getInt("fps_v2", 0), FPS_LABELS.length)
+                : new int[]{0, 2, 3}[clamp(p.getInt("fps", 0), 3)];
         s.showFps = p.getBoolean("show_fps", true);
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.perfLog = p.getBoolean("perf_log", true);
@@ -55,7 +58,7 @@ final class Settings {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putInt("resolution", resolution)
                 .putInt("aa", aa)
-                .putInt("fps", fps)
+                .putInt("fps_v2", fps)
                 .putBoolean("show_fps", showFps)
                 .putInt("shader_mode", shaderMode)
                 .putBoolean("perf_log", perfLog)
