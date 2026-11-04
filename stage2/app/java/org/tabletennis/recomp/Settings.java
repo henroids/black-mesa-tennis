@@ -15,7 +15,6 @@ final class Settings {
     static final String[] AA_VALUES = {"none", "fxaa", "fxaa_extreme"};
     static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped"};
     static final int[] FPS_VALUES = {60, 30, 0};
-    static final int[] SHADER_THREAD_VALUES = {2, 4, 6};
 
     // Visual-risk speed-ups (F10/F11: skip render passes with no visible effect so far). Kept
     // switchable so any venue / character / mode can be compared with the original quickly.
@@ -34,7 +33,6 @@ final class Settings {
     int fps = 0;
     boolean showFps = true;
     int shaderMode = 1;     // 0 = async (draws placeholders while compiling), 1 = wait (no missing objects)
-    int shaderThreads = 1;  // index into SHADER_THREAD_VALUES
     boolean perfLog = true; // thread monitor + sampling profiler (logs/profile.txt)
 
     static Settings load(Context context) {
@@ -45,7 +43,6 @@ final class Settings {
         s.fps = clamp(p.getInt("fps", 0), FPS_LABELS.length);
         s.showFps = p.getBoolean("show_fps", true);
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
-        s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
         s.test = clamp(p.getInt("test_v76", 0), TEST_LABELS.length);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
@@ -59,7 +56,6 @@ final class Settings {
                 .putInt("fps", fps)
                 .putBoolean("show_fps", showFps)
                 .putInt("shader_mode", shaderMode)
-                .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
                 .putInt("test_v76", test)
                 .putInt("hidden_passes", hiddenPasses)
@@ -73,7 +69,6 @@ final class Settings {
                 + " | Frame rate: " + FPS_LABELS[fps]
                 + " | Show FPS: " + (showFps ? "On" : "Off")
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
-                + " | Shader threads: " + SHADER_THREAD_VALUES[shaderThreads]
                 + " | GPU driver: " + driver
                 + " | Test: " + TEST_LABELS[test]
                 + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
@@ -97,17 +92,14 @@ final class Settings {
         args.add("--show_fps=" + showFps);
         args.add("--fullscreen=true");
         args.add("--async_shader_compilation=" + (shaderMode == 0));
-        args.add("--vulkan_pipeline_creation_threads=" + SHADER_THREAD_VALUES[shaderThreads]);
+        // Shader (pipeline) preparation threads: only matters on first visits, fixed at 4.
+        args.add("--vulkan_pipeline_creation_threads=4");
         args.add("--protect_zero=false");
         args.add("--gpu_allow_invalid_fetch_constants=true");
         // Present from the UI thread: otherwise the GPU command thread painted and waited
         // for the display's next refresh on every guest frame.
         args.add("--host_present_from_non_ui_thread=false");
         return args;
-    }
-
-    private static int clampDefault(int value, int count, int fallback) {
-        return value < 0 || value >= count ? fallback : value;
     }
 
     private static int clamp(int value, int count) {

@@ -131,7 +131,6 @@ If a stage fails, it says so and leaves a log zip (`~/tt-android/tt-stage1-logs.
 | Anti-aliasing | **FXAA** (or **Off** for ~+1.3 FPS) | Off shows more jagged edges |
 | Frame rate | **60 FPS** | The game's own rate |
 | Shaders | **Wait (complete)** | No missing objects; brief stutter on new screens only |
-| Shader threads | **4** | |
 | GPU driver | **Turnip Gen8 V38** | From [StevenMXZ/Adreno-Tools-Drivers](https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases) (`Turnip_Gen8_V38.zip`) |
 | Hidden passes | **Skipped (faster)** | Switch to *Drawn* if something looks wrong (see below) |
 | Performance log | Off for normal play, **On** when reporting a problem | |
@@ -148,7 +147,6 @@ approximate, compared with the recommended settings):
 | **Frame rate** | 60 FPS · 30 FPS · Uncapped | 60 is the game's own target. **30** caps the game at 30, which should feel steadier if you prefer consistency over the ~43 FPS average. *Uncapped* is for testing only. |
 | **Show FPS** | Off · On | Small FPS counter in the corner. No real cost. |
 | **Shaders** | Async · Wait | *Wait*: everything is drawn correctly, with a brief stutter the first time a screen appears. *Async*: fewer stutters, but objects can pop in for a moment. |
-| **Shader threads** | 2 · 4 · 6 | Threads used to prepare shaders (affects first-visit stutter, not match FPS). |
 | **GPU driver** | System · imported drivers | Turnip Gen8 V38 ≈ +2 FPS over older Turnip builds. Qualcomm's own drivers measured slower (~25 FPS) with graphical errors. |
 | **Hidden passes** | Skipped · Drawn | Skips three rendering passes that had no visible effect in testing (**≈ +2.5 FPS**). They were only checked in some venues and modes, so if anything looks wrong, set **Drawn** and compare, and please report it. |
 | **Performance log** | Off · On | Records a performance profile for problem reports. Leave it off for normal play. |
