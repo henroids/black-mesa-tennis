@@ -100,22 +100,8 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
     // Pace presentation thread to target framerate limit
     int32_t target_fps = REXCVAR_GET(framerate);
 #if defined(__ANDROID__)
-    // The presenter uses a mailbox swapchain, so without a cap this UI thread redraws
-    // hundreds of times a second (85% of a big core in the v5 logs). Cap it at 60 Hz
-    // with a sleep; the game itself is paced separately in the VdSwap hook.
-    // TEMPORARY test (v79): with TT_TEST=nowaitnew the presenter waits for a new
-    // game frame before painting instead (patch_sdk_vulkan_fixes.py T1).
-    static const bool tt_newframes = [] {
-      const char* v = std::getenv("TT_TEST");
-      return v && std::string_view(v) == "nowaitnew";
-    }();
-    if (!tt_newframes) {
-      using clock = std::chrono::steady_clock;
-      static auto next_draw = clock::now();
-      constexpr auto kUiPeriod = std::chrono::nanoseconds(1'000'000'000LL / 60);
-      if (next_draw > clock::now()) std::this_thread::sleep_until(next_draw);
-      next_draw = std::max(next_draw + kUiPeriod, clock::now() - kUiPeriod);
-    }
+    // The presenter itself paints once per new game frame (patch_sdk_vulkan_fixes.py F14),
+    // so no cap here; the game is paced separately in the VdSwap hook.
     target_fps = 0;
 #endif
     if (target_fps > 0) {

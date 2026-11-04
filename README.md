@@ -153,7 +153,8 @@ approximate, compared with the recommended settings):
 
 Always on (not settings): single-sample rendering instead of the game's 4× MSAA (the biggest single
 speed-up), a calmer wait for the graphics chip (the game no longer keeps a CPU core spinning, which
-lowers CPU load and heat), a stereo sound mix made for the device's speakers (clearer hits), and a set of emulator fixes listed at the top of
+lowers CPU load and heat), a stereo sound mix made for the device's speakers (clearer hits), every game frame shown on
+screen (earlier builds showed only about half of them), and a set of emulator fixes listed at the top of
 [`stage2/native/patch_sdk_vulkan_fixes.py`](stage2/native/patch_sdk_vulkan_fixes.py).
 
 ## Controls

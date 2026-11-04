@@ -13,13 +13,15 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F5        GPU progress poll uses vkGetFenceStatus (zero-timeout waits are slow on KGSL)
   F6        GPU progress from a memory marker instead of driver fence queries   ~29->36 FPS
   F7        presenter's submission tracker doesn't query very young fences (KGSL ~13 ms)
-  F8        presenter: swapchain acquire waited on the CPU, present without semaphores
+  F8        presenter: swapchain acquire waited on the CPU; the UI thread doesn't wait for
+            its paint (screen shows every game frame: ~22 -> ~44 repaints/s)
   F9        skip re-converting textures whose guest bytes didn't change          ~+1 FPS
             (and don't hash textures that will reload anyway: less CPU)
   F10       skip two depth-only passes with no visible effect (640/1120 wide)     ~+2 FPS
   F11       skip a full-size pass that writes neither colour nor depth (~96 draws) ~+0.5 FPS
   F12       skip render-target copies (EDRAM transfers between passes, ~26/frame)  ~+1.4 FPS
   F13       stereo sound mix by the SDK instead of Android's 5.1 downmix (clearer hits)
+  F14       screen repainted once per new game frame (no repeated repaints)
   (F10-F12 are switched off together by TT_DRAW_ALL_PASSES=1: launcher "Hidden passes")
 
 DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
@@ -28,6 +30,7 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
                       [6] upload calls [7] upload bytes [8] draws skipped by F10/F11
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
+  D4  tt_present_stats [0] new game images [1] screen paints (F14)
 """
 import re
 import sys
@@ -316,9 +319,11 @@ edit("src/ui/vulkan/vulkan_submission_tracker.cpp", (
 done.append("F7 submission tracker skips status queries on young fences")
 
 # ---- F8 Presenter. On Android the swapchain acquire only completes at the display's
-#      refresh, and a present that waits on a semaphore can idle the whole shared queue.
-#      The UI thread now waits for the acquire and for its own paint on the CPU, and
-#      submits / presents with no semaphores, so nothing on the GPU queue waits for vsync.
+#      refresh, so the GPU queue must not wait for it: the UI thread waits for the acquire
+#      on a CPU fence and the paint is submitted with no wait semaphore. The paint signals
+#      the present semaphore and the present waits for it GPU-side. (Until v80 the UI thread
+#      also waited for its paint on the CPU; the paint sits behind the game's queued GPU
+#      work, so the screen was repainted only ~22 times/s while the game made ~44 frames.)
 edit(PRESENTER, (
     """  VkSemaphore acquire_semaphore = paint_submission.acquire_semaphore();
   uint32_t swapchain_image_index;
@@ -327,14 +332,6 @@ edit(PRESENTER, (
                                 VK_NULL_HANDLE, &swapchain_image_index);
 """,
     """  uint32_t swapchain_image_index;
-  // TEMPORARY test (v79, TT_TEST=nowait / nowaitnew): the paint signals the present
-  // semaphore and the present waits for it on the GPU side, instead of the UI thread
-  // waiting for the paint on the CPU (which sits behind the game's queued GPU work, so the
-  // UI thread could only paint ~22 times a second while the game made ~44 frames).
-  static const bool tt_nowait = [] {
-    const char* v = std::getenv("TT_TEST");
-    return v && std::strncmp(v, "nowait", 6) == 0;
-  }();
   // tt-android F8: acquire with a CPU fence (one per painting thread) instead of a
   // semaphore the GPU queue would have to wait on.
   thread_local VkFence tt_acquire_fence = VK_NULL_HANDLE;
@@ -361,25 +358,9 @@ edit(PRESENTER, (
   submit_info.pWaitSemaphores = nullptr;
   submit_info.pWaitDstStageMask = nullptr;
 """), (
-    "  submit_info.signalSemaphoreCount = 1;\n  submit_info.pSignalSemaphores = &present_semaphore;\n",
-    "  // tt-android F8: present waits on the CPU (or, with nowait, on the GPU side)\n"
-    "  submit_info.signalSemaphoreCount = tt_nowait ? 1 : 0;\n"
-    "  submit_info.pSignalSemaphores = tt_nowait ? &present_semaphore : nullptr;\n"), (
-    "  VkPresentInfoKHR present_info;\n  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;\n"
-    "  present_info.pNext = nullptr;\n  present_info.waitSemaphoreCount = 1;\n"
-    "  present_info.pWaitSemaphores = &present_semaphore;\n",
-    "  // tt-android F8: wait for the paint on the CPU, then present without semaphores.\n"
-    "  if (!tt_nowait) {\n"
-    "    paint_context_.submission_tracker.AwaitSubmissionCompletion(\n"
-    "        paint_context_.submission_tracker.GetCurrentSubmission() - 1);\n"
-    "  }\n"
-    "  VkPresentInfoKHR present_info;\n  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;\n"
-    "  present_info.pNext = nullptr;\n  present_info.waitSemaphoreCount = tt_nowait ? 1 : 0;\n"
-    "  present_info.pWaitSemaphores = tt_nowait ? &present_semaphore : nullptr;\n"), (
-    # the semaphores above are no longer used
-    "  VkPipelineStageFlags acquire_semaphore_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;\n", ""),
-    includes=("#include <cstdlib>", "#include <cstring>"))
-done.append("F8 presenter acquires and presents without GPU-side semaphore waits")
+    # the acquire semaphore's wait stage is no longer used
+    "  VkPipelineStageFlags acquire_semaphore_wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;\n", ""))
+done.append("F8 presenter: acquire waited on the CPU, paint not awaited by the UI thread")
 
 # ---- F9 Every frame the emulator re-converted ~60 textures (~43 MB) on the GPU because the
 #      game wrote somewhere in their memory pages. When a texture was invalidated only by
@@ -516,7 +497,7 @@ done.append("F12 render-target copies skipped (TT_DRAW_ALL_PASSES=1 keeps them)"
 #      it the game's 5.1 mix and Android folded that down to the Thor's two speakers itself:
 #      ball hits sounded muffled, hollow and distant. The SDK's own 5.1 -> stereo fold (the
 #      path it uses for stereo devices) runs instead and Android gets plain stereo. v79:
-#      "way better" (owner). TEMPORARY test (v80): TT_TEST=echo50 / echo25 turn the rear
+#      "way better" (owner). TEMPORARY test (v81): TT_TEST=echo50 / echo25 turn the rear
 #      channels down in the fold (the SDK default is 0.707) to hear whether that's the echo.
 edit("src/audio/sdl/sdl_audio_driver.cpp", (
     "  if (obtained_spec.channels <= 2) {\n",
@@ -538,6 +519,40 @@ edit("src/audio/sdl/sdl_audio_driver.cpp", (
     "  if (obtained_spec.channels <= 2) {\n"),
     includes=("#include <cstdlib>", "#include <cstring>"))
 done.append("F13 stereo sound mix by the SDK (not Android's 5.1 downmix)")
+
+# ---- F14 Repaint only on new game frames. The overlay (an ImGui UI drawer) keeps the UI
+#      thread repainting; it used to be capped at 60 Hz, but the game makes ~44 frames/s, so
+#      many repaints re-presented the same image. The UI thread now waits here, BEFORE taking
+#      the guest image, until the game has refreshed it (at most ~120 Hz; at least every
+#      100 ms so menus stay alive). With F8 this gives one paint per game frame (v79: 43.6
+#      new images, 43.6 repaints per second). D4 tt_present_stats: [0] guest refreshes
+#      [1] screen paints.
+edit("src/ui/presenter.cpp", (
+    "  // Now, it's known that `ready == writable` on the host presentation side.\n",
+    "  __atomic_fetch_add(&tt_present_stats[0], 1, __ATOMIC_RELEASE);  // tt-android F14\n"
+    "  // Now, it's known that `ready == writable` on the host presentation side.\n"), (
+    "void Presenter::WaitForUITickFromUIThread() {\n",
+    "void Presenter::WaitForUITickFromUIThread() {\n"
+    "  __atomic_fetch_add(&tt_present_stats[1], 1, __ATOMIC_RELAXED);  // tt-android F14\n"
+    "  {\n"
+    "    using clock = std::chrono::steady_clock;\n"
+    "    static uint64_t last_seen = 0;\n"
+    "    static auto last_paint = clock::now();\n"
+    "    while (true) {\n"
+    "      const auto now = clock::now();\n"
+    "      const uint64_t cur = __atomic_load_n(&tt_present_stats[0], __ATOMIC_ACQUIRE);\n"
+    "      if ((cur != last_seen && now >= last_paint + std::chrono::milliseconds(8)) ||\n"
+    "          now >= last_paint + std::chrono::milliseconds(100)) {\n"
+    "        last_seen = cur;\n"
+    "        last_paint = now;\n"
+    "        break;\n"
+    "      }\n"
+    "      std::this_thread::sleep_for(std::chrono::milliseconds(1));\n"
+    "    }\n"
+    "  }\n"),
+    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_present_stats[4] = {};  // F14 / D4\n',
+    includes=("#include <chrono>", "#include <cstdint>", "#include <thread>"))
+done.append("F14 screen repainted once per new game frame")
 
 # ====================================================================== DIAGNOSTICS
 
@@ -592,51 +607,5 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
-
-# ========================================================= TEMPORARY TEST ROUND (v80)
-# Remove this section once the round's results are in (HANDOFF: clean up as you go).
-# TT_TEST=nowait     F8 presents without the UI thread waiting for its paint (see F8)
-# TT_TEST=nowaitnew  nowait + the screen is repainted only when the game has a new frame (T1)
-# TT_TEST=echo50 / echo25  rear channels turned down in the stereo mix (F13)
-
-# ---- T1 Repaint on new frames. The overlay (an ImGui UI drawer) keeps the UI thread
-#      repainting; tabletennis_app.h caps that at 60 Hz with a sleep, but the game makes
-#      ~43 frames/s, so ~1 repaint in 3 re-presents the same image (paint + FXAA + overlay).
-#      With newframes, the UI thread waits here, BEFORE taking the guest image, until the
-#      game has refreshed it (at most ~120 Hz; at least every 100 ms so menus stay alive),
-#      and tabletennis_app.h skips its own sleep. tt_present_stats: [0] guest refreshes
-#      [1] screen paints.
-edit("src/ui/presenter.cpp", (
-    "  // Now, it's known that `ready == writable` on the host presentation side.\n",
-    "  __atomic_fetch_add(&tt_present_stats[0], 1, __ATOMIC_RELEASE);  // tt-android T1\n"
-    "  // Now, it's known that `ready == writable` on the host presentation side.\n"), (
-    "void Presenter::WaitForUITickFromUIThread() {\n",
-    "void Presenter::WaitForUITickFromUIThread() {\n"
-    "  __atomic_fetch_add(&tt_present_stats[1], 1, __ATOMIC_RELAXED);  // tt-android T1\n"
-    "  static const bool tt_newframes = [] {\n"
-    "    const char* v = std::getenv(\"TT_TEST\");\n"
-    "    return v && std::strcmp(v, \"nowaitnew\") == 0;\n"
-    "  }();\n"
-    "  if (tt_newframes) {\n"
-    "    using clock = std::chrono::steady_clock;\n"
-    "    static uint64_t last_seen = 0;\n"
-    "    static auto last_paint = clock::now();\n"
-    "    while (true) {\n"
-    "      const auto now = clock::now();\n"
-    "      const uint64_t cur = __atomic_load_n(&tt_present_stats[0], __ATOMIC_ACQUIRE);\n"
-    "      if ((cur != last_seen && now >= last_paint + std::chrono::milliseconds(8)) ||\n"
-    "          now >= last_paint + std::chrono::milliseconds(100)) {\n"
-    "        last_seen = cur;\n"
-    "        last_paint = now;\n"
-    "        break;\n"
-    "      }\n"
-    "      std::this_thread::sleep_for(std::chrono::milliseconds(1));\n"
-    "    }\n"
-    "  }\n"),
-    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_present_stats[4] = {};  // T1\n',
-    includes=("#include <chrono>", "#include <cstdint>", "#include <cstdlib>", "#include <cstring>",
-              "#include <thread>"))
-done.append("T1 test: TT_TEST=nowaitnew repaints only on new game frames")
-
 
 print("\n".join(done))
