@@ -393,7 +393,8 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
     "  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
     "  TextureKey texture_key = vulkan_texture.key();\n",
     """  {  // tt-android F9: skip re-converting textures whose guest bytes didn't change
-    struct State { TextureKey key; uint64_t base = 0, mips = 0; bool has_base = false, has_mips = false; };
+    struct State { TextureKey key; uint64_t base = 0, mips = 0; bool has_base = false, has_mips = false;
+                   uint32_t streak = 0, since_check = 0; };
     static std::unordered_map<const void*, State> states;
     __atomic_fetch_add(&tt_tex_stats[0], 1, __ATOMIC_RELAXED);
     __atomic_fetch_add(&tt_work_stats[2], 1, __ATOMIC_RELAXED);
@@ -407,30 +408,44 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
     if (gpu_written) __atomic_fetch_add(&tt_tex_stats[2], 1, __ATOMIC_RELAXED);
     memory::Memory& mem = shared_memory().tt_guest_memory();
     const TextureKey key = texture.key();
+    // TEMPORARY test (v78, TT_TEST=lesshash/both): don't hash what will reload anyway.
+    // GPU-written textures always reload; a CPU-written one whose bytes changed on its last
+    // 8 loads is reloaded without hashing, re-checked every 16th load.
+    static const bool tt_lesshash = [] {
+      const char* v = std::getenv("TT_TEST");
+      return v && (std::strcmp(v, "lesshash") == 0 || std::strcmp(v, "both") == 0);
+    }();
+    auto it = states.find(&texture);
+    const bool known = it != states.end() && std::memcmp(&it->second.key, &key, sizeof(key)) == 0;
+    const bool had_hash = known && (it->second.has_base || it->second.has_mips);
+    const bool streaky = tt_lesshash && known && !gpu_written && it->second.streak >= 8 &&
+                         (++it->second.since_check & 15) != 0;
+    const bool skip_hash = tt_lesshash && (gpu_written || streaky);
     uint64_t hash_base = 0, hash_mips = 0;
-    if (load_base && texture.GetGuestBaseSize()) {
+    if (!skip_hash && load_base && texture.GetGuestBaseSize()) {
       hash_base = XXH3_64bits(mem.TranslatePhysical(uint32_t(key.base_page) << 12),
                               texture.GetGuestBaseSize());
       __atomic_fetch_add(&tt_tex_stats[3], uint64_t(texture.GetGuestBaseSize()), __ATOMIC_RELAXED);
     }
-    if (load_mips && texture.GetGuestMipsSize()) {
+    if (!skip_hash && load_mips && texture.GetGuestMipsSize()) {
       hash_mips = XXH3_64bits(mem.TranslatePhysical(uint32_t(key.mip_page) << 12),
                               texture.GetGuestMipsSize());
       __atomic_fetch_add(&tt_tex_stats[3], uint64_t(texture.GetGuestMipsSize()), __ATOMIC_RELAXED);
     }
-    auto it = states.find(&texture);
-    const bool known = it != states.end() && std::memcmp(&it->second.key, &key, sizeof(key)) == 0;
-    if (!gpu_written && known &&
+    if (!gpu_written && !skip_hash && known &&
         (!load_base || (it->second.has_base && it->second.base == hash_base)) &&
         (!load_mips || (it->second.has_mips && it->second.mips == hash_mips))) {
       __atomic_fetch_add(&tt_tex_stats[1], 1, __ATOMIC_RELAXED);
+      it->second.streak = 0;
       return true;  // same bytes as the last load: the GPU copy is still right
     }
     State& state = states[&texture];
     if (!known) state = State{};
+    if (!gpu_written && !skip_hash && had_hash) ++state.streak;  // hashed and found changed
     state.key = key;
-    if (load_base) { state.base = hash_base; state.has_base = !gpu_written; }
-    if (load_mips) { state.mips = hash_mips; state.has_mips = !gpu_written; }
+    // A streaky skip keeps the last hash, so the 16th-load re-check compares against it.
+    if (load_base && !streaky) { state.base = hash_base; state.has_base = !gpu_written && !skip_hash; }
+    if (load_mips && !streaky) { state.mips = hash_mips; state.has_mips = !gpu_written && !skip_hash; }
   }
   VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);
   TextureKey texture_key = vulkan_texture.key();
@@ -440,7 +455,7 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
             "extern std::unordered_set<const void*> tt_tex_gpu_dirty;\n"
             "extern \"C\" uint64_t tt_work_stats[16];\n"
             "extern \"C\" __attribute__((visibility(\"default\"))) uint64_t tt_tex_stats[4] = {};\n",
-    includes=("#include <cstring>", "#include <mutex>", "#include <unordered_map>",
+    includes=("#include <cstdlib>", "#include <cstring>", "#include <mutex>", "#include <unordered_map>",
               "#include <unordered_set>", "#include <rex/hash.h>"))
 done.append("F9 unchanged textures aren't re-converted")
 
@@ -540,5 +555,50 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
+
+# ========================================================= TEMPORARY TEST ROUND (v78)
+# Remove this section once the round's results are in (HANDOFF: clean up as you go).
+# Two load reductions, no intended visual change (TT_TEST=newframes / lesshash / both):
+#   newframes  the screen is repainted when the game has a new frame (not 60x a second)
+#   lesshash   F9 skips hashing textures that will reload anyway (see F9)
+
+# ---- T1 Repaint on new frames. The overlay (an ImGui UI drawer) keeps the UI thread
+#      repainting; tabletennis_app.h caps that at 60 Hz with a sleep, but the game makes
+#      ~43 frames/s, so ~1 repaint in 3 re-presents the same image (paint + FXAA + overlay).
+#      With newframes, the UI thread waits here, BEFORE taking the guest image, until the
+#      game has refreshed it (at most ~120 Hz; at least every 100 ms so menus stay alive),
+#      and tabletennis_app.h skips its own sleep. tt_present_stats: [0] guest refreshes
+#      [1] screen paints.
+edit("src/ui/presenter.cpp", (
+    "  // Now, it's known that `ready == writable` on the host presentation side.\n",
+    "  __atomic_fetch_add(&tt_present_stats[0], 1, __ATOMIC_RELEASE);  // tt-android T1\n"
+    "  // Now, it's known that `ready == writable` on the host presentation side.\n"), (
+    "void Presenter::WaitForUITickFromUIThread() {\n",
+    "void Presenter::WaitForUITickFromUIThread() {\n"
+    "  __atomic_fetch_add(&tt_present_stats[1], 1, __ATOMIC_RELAXED);  // tt-android T1\n"
+    "  static const bool tt_newframes = [] {\n"
+    "    const char* v = std::getenv(\"TT_TEST\");\n"
+    "    return v && (std::strcmp(v, \"newframes\") == 0 || std::strcmp(v, \"both\") == 0);\n"
+    "  }();\n"
+    "  if (tt_newframes) {\n"
+    "    using clock = std::chrono::steady_clock;\n"
+    "    static uint64_t last_seen = 0;\n"
+    "    static auto last_paint = clock::now();\n"
+    "    while (true) {\n"
+    "      const auto now = clock::now();\n"
+    "      const uint64_t cur = __atomic_load_n(&tt_present_stats[0], __ATOMIC_ACQUIRE);\n"
+    "      if ((cur != last_seen && now >= last_paint + std::chrono::milliseconds(8)) ||\n"
+    "          now >= last_paint + std::chrono::milliseconds(100)) {\n"
+    "        last_seen = cur;\n"
+    "        last_paint = now;\n"
+    "        break;\n"
+    "      }\n"
+    "      std::this_thread::sleep_for(std::chrono::milliseconds(1));\n"
+    "    }\n"
+    "  }\n"),
+    prelude='extern "C" __attribute__((visibility("default"))) uint64_t tt_present_stats[4] = {};  // T1\n',
+    includes=("#include <chrono>", "#include <cstdint>", "#include <cstdlib>", "#include <cstring>",
+              "#include <thread>"))
+done.append("T1 test: TT_TEST=newframes/both repaints only on new game frames; T2 lesshash in F9")
 
 print("\n".join(done))

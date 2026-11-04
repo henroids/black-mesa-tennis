@@ -21,6 +21,11 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
+    // TEMPORARY test round (v78, lower CPU/GPU load): remove the row when the round is done.
+    static final String[] TEST_LABELS = {"Off", "Repaint on new frames", "Less texture hashing", "Both"};
+    static final String[] TEST_VALUES = {"", "newframes", "lesshash", "both"};
+    int test = 0;
+
 
     private static final String PREFS = "tt_settings";
 
@@ -41,6 +46,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.perfLog = p.getBoolean("perf_log", true);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
+        s.test = clamp(p.getInt("test_v78", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -53,6 +59,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putBoolean("perf_log", perfLog)
                 .putInt("hidden_passes", hiddenPasses)
+                .putInt("test_v78", test)
                 .commit();
     }
 
@@ -65,6 +72,7 @@ final class Settings {
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
                 + " | GPU driver: " + driver
                 + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
+                + " | Test: " + TEST_LABELS[test]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }
 

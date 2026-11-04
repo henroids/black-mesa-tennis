@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v77**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v78**).
 
 ---
 
@@ -176,6 +176,7 @@ were removed in v56; the history table below says what each experiment found.
 | **v75** | Only test left: skip render-target copies, played longer (menus, replays, other venues/modes) to see if anything needs them. If nothing breaks, it joins the Hidden passes switch | Folded into v76 |
 | **v76** | Two tests: skip render-target copies (played longer), and **calmer GPU wait**: the game's wait-for-GPU loop `sub_82359DC0` (D3D fence wait: checks the GPU's read pointer, calls `sub_823643E0`, then counts a stack variable down from 100 with the PPC low-priority hint, repeat) kept one big core ~80% busy all match. `stage2/native/patch_game_gpu_wait.py` inserts `TtGpuWaitPause(r11)` at `loc_82359E30`; with `TT_TEST=calmwait` it sleeps 100 µs on each countdown's first pass. Goal: less CPU load / heat at the same FPS Also: Shader threads row removed (owner), fixed at 4 (`--vulkan_pipeline_creation_threads=4`; only affects first-visit shader preparation) | Last-10 s FPS: Off 42.3, **Calmer GPU wait 43.0** with the spinning thread at **~21% of a core instead of ~86%** (top-6 threads ~146% vs ~228% CPU), no visible change. **Skip RT copies 43.7 (+1.4, same as v74)**, normal in the red-carpet hall and the Yasaka venue |
 | **v77** | Both made permanent: GPU wait sleeps (always on, not a visual change); render-target copies skipped as **F12** under the Hidden passes switch. Test row, screenshot stamp and test counters removed | — |
+| **v78** | Load-reduction round (no intended visual change), Test row: **Repaint on new frames** (`TT_TEST=newframes`: presenter waits before taking the guest image until the game has refreshed it, ≤~120 Hz, ≥10 Hz; overlay's own 60 Hz sleep skipped; counters `tt_present_stats`), **Less texture hashing** (`lesshash`: F9 doesn't hash GPU-written textures, and a CPU-written texture that changed on its last 8 loads is reloaded without hashing, re-checked every 16th load), **Both** | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

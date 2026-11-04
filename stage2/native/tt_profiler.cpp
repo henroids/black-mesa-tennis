@@ -508,6 +508,12 @@ void RunProfiler(std::string dir) {
                        stat_secs, (frame[0] - frame_prev[0]) / stat_secs,
                        (frame[3] - frame_prev[3]) / stat_secs, (frame[1] - frame_prev[1]) / stat_secs,
                        (frame[2] - frame_prev[2]) / 1e6 / stat_secs);
+          if (const uint64_t* ps = FindStats("tt_present_stats")) {  // TEMPORARY (v78)
+            static uint64_t ps_prev[4] = {};
+            std::fprintf(f, "screen: %.1f new game images/s, %.1f repaints/s\n",
+                         (ps[0] - ps_prev[0]) / stat_secs, (ps[1] - ps_prev[1]) / stat_secs);
+            std::memcpy(ps_prev, ps, sizeof ps_prev);
+          }
           if (work) {
             auto per = [&](int i) { return (work[i] - work_prev[i]) / swaps; };
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
