@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v73**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v74**).
 
 ---
 
@@ -33,6 +33,8 @@ test showed, and where things stand now. Last updated 2026-11-01 (build **v73**)
 | libadrenotools | https://github.com/bylaws/libadrenotools | Loads custom Vulkan drivers (Turnip) on Adreno. |
 | Turnip drivers tested | https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases | Gen8 V38 / V37 builds (Mesa 26.3/27.0). |
 | Xenia Canary (consulted) | — | Has only one Table Tennis patch (title 545407DF, disables light shafts as a crash fix); not needed here. |
+| Naruto: Rise of a Ninja / The Broken Bond recomps (consulted) | https://github.com/jorjbarbosa/naruto-rise-recomp, https://github.com/jorjbarbosa/broken-bond-recomp | Same SDK. Took one setting from their SDK patches: `execute_unclipped_draw_vs_on_cpu=true` (v74 test). Their **native renderer** (hooks the game's D3D calls, draws with Vulkan directly, shaders pre-translated by XenosRecomp, no Xenos emulation) is the realistic route to 60 FPS, but it's ~50k lines, game-specific (hundreds of hooked addresses) and PC-only; porting it to Table Tennis (RAGE engine) and Android would be a multi-month project. Not started. |
+| rac-rs (consulted) | https://github.com/AsobiCodes/rac-rs | PS2 Ratchet & Clank port in Rust; nothing applicable (its PGO targets CPU time; this port is GPU-bound). |
 
 ## 3. Build and delivery workflow
 
@@ -167,7 +169,8 @@ were removed in v56; the history table below says what each experiment found.
 | **v70** | Test: pass B split by pixel shader into 6 groups (hash % 6) | Bug: the hash had its low bit forced on, so only groups 2, 4, 6 had shaders (1/3/5 = same as Off). Pass B uses just 8 pixel shaders. G6 (5 shaders, ~50–65 draws, mostly `a452`) = background + shadows: skipping it broke the background and removed shadows. G2 (`f895` ~6 draws, `8cc4` 1) = the real shadows (none under the table or the ball). The 'choppy ball trail' note came from group 1, which skipped nothing, so it was most likely not the test. G4 (`635f`, 1 draw): nothing visible. Last-10 s rally FPS: Off 44.0, all of pass B skipped 44.7, so pass B is worth < 1 FPS |
 | **v71** | Test: skip one pass-B shader at a time | Never run: owner chose to keep shadows (cheap, look good) and pinned the question |
 | **v72** | Main scene pass round: census; gamma targets 8-bit; main pass clipped to left half; `TU_DEBUG=nolrz`; `TU_DEBUG=noubwc` | Last-10 s rally FPS: Off 44.2. Gamma 8-bit 44.3: no main-pass draw uses a gamma target, so it does nothing (dropped). **Left half 47.6**: halving main-pass pixels saves only ~1.6 ms, so pixel work there is ~3 ms of ~22.6 ms; the main pass isn't pixel-bound. No LRZ 44.9 (no effect: LRZ isn't helping). **No UBWC 39.0** (compression is worth ~5 FPS; already on). Main pass ≈ 390 draws/frame |
-| **v73** | Where does the frame time go? Diagnostics (picture breaks): main pass with no pixels (vertex work only), main pass skipped, render-target copies (EDRAM transfers) skipped; counters for transfer draws and pixels | **Not tested yet** |
+| **v73** | Where does the frame time go? Diagnostics (picture breaks): main pass with no pixels (vertex work only), main pass skipped, render-target copies (EDRAM transfers) skipped; counters for transfer draws and pixels | Not run; folded into v74 |
+| **v74** | v73's three diagnostics + `--execute_unclipped_draw_vs_on_cpu=true` (upstream Xenia's default; the Naruto recomps patch it on because unclipped full-screen draws otherwise claim all of EDRAM and cause spurious render-target ownership transfers) | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest

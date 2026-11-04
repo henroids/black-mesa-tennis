@@ -23,10 +23,11 @@ final class Settings {
     int hiddenPasses = 0;
 
     // TEMPORARY test round (v73, where the frame time goes): remove the row when done.
-    // All three are diagnostics that break the picture; only their FPS matters.
+    // Rows 1-3 are diagnostics that break the picture; only their FPS matters. Row 4 is a real
+    // candidate (upstream Xenia's default, used by the Naruto recomps): fewer render-target copies.
     static final String[] TEST_LABELS = {"Off", "Main pass: no pixels", "Main pass: skipped",
-            "RT copies: skipped"};
-    static final String[] TEST_VALUES = {"", "nopix", "nomain", "noxfer"};
+            "RT copies: skipped", "Unclipped draws on CPU"};
+    static final String[] TEST_VALUES = {"", "nopix", "nomain", "noxfer", ""};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -49,7 +50,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.shaderThreads = clampDefault(p.getInt("shader_threads", 1), SHADER_THREAD_VALUES.length, 1);
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v73", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v74", 0), TEST_LABELS.length);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         return s;
     }
@@ -63,7 +64,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putInt("shader_threads", shaderThreads)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v73", test)
+                .putInt("test_v74", test)
                 .putInt("hidden_passes", hiddenPasses)
                 .commit();
     }
@@ -102,6 +103,9 @@ final class Settings {
         args.add("--vulkan_pipeline_creation_threads=" + SHADER_THREAD_VALUES[shaderThreads]);
         args.add("--protect_zero=false");
         args.add("--gpu_allow_invalid_fetch_constants=true");
+        // TEMPORARY test (v74): run full-screen unclipped draws' vertex shader on the CPU to find
+        // their real extent, so they don't claim all of EDRAM and trigger render-target copies.
+        if (test == 4) args.add("--execute_unclipped_draw_vs_on_cpu=true");
         // Present from the UI thread: otherwise the GPU command thread painted and waited
         // for the display's next refresh on every guest frame.
         args.add("--host_present_from_non_ui_thread=false");

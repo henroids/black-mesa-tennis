@@ -50,8 +50,9 @@ public final class GameActivity extends SDLActivity {
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
         if (settings.hiddenPasses == 1) setEnv("TT_DRAW_ALL_PASSES", "1");
-        if (settings.test > 0) {  // TEMPORARY (v73)
-            setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);
+        if (settings.test > 0) {  // TEMPORARY (v74)
+            if (!Settings.TEST_VALUES[settings.test].isEmpty())
+                setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);
             shotLabel = "Test: " + Settings.TEST_LABELS[settings.test];
         }
         if (settings.perfLog) {
@@ -148,7 +149,7 @@ public final class GameActivity extends SDLActivity {
 
     // ------------------------------------------------------------ screenshots (L3 + R3)
 
-    // TEMPORARY (v73): the active test is written onto screenshots, because uploaded
+    // TEMPORARY (v74): the active test is written onto screenshots, because uploaded
     // pictures lose their file names (and with them the time stamp).
     private String shotLabel = "Test: Off";
 
