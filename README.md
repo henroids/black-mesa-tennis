@@ -40,8 +40,8 @@ with the recommended settings below:
 | Part of the game | Frame rate |
 |---|---|
 | Menus, character select | ~57–60 FPS |
-| Rallies (720p, FXAA) | ~43–44 FPS |
-| Rallies (720p, anti-aliasing Off) | ~44–45 FPS |
+| Rallies (720p, FXAA) | ~43–45 FPS |
+| Rallies (720p, anti-aliasing Off) | ~45–46 FPS |
 
 The target is a steady 60 FPS in matches. During rallies the GPU is the limit (it runs at 99% at
 its top clock), so progress now comes from many small reductions in GPU work; see
@@ -148,11 +148,12 @@ approximate, compared with the recommended settings):
 | **Show FPS** | Off · On | Small FPS counter in the corner. No real cost. |
 | **Shaders** | Async · Wait | *Wait*: everything is drawn correctly, with a brief stutter the first time a screen appears. *Async*: fewer stutters, but objects can pop in for a moment. |
 | **GPU driver** | System · imported drivers | Turnip Gen8 V38 ≈ +2 FPS over older Turnip builds. Qualcomm's own drivers measured slower (~25 FPS) with graphical errors. |
-| **Hidden passes** | Skipped · Drawn | Skips three rendering passes that had no visible effect in testing (**≈ +2.5 FPS**). They were only checked in some venues and modes, so if anything looks wrong, set **Drawn** and compare, and please report it. |
+| **Hidden passes** | Skipped · Drawn | Skips three rendering passes and the image copies between passes, none of which had a visible effect in testing (**≈ +4 FPS**). They were only checked in some venues and modes, so if anything looks wrong, set **Drawn** and compare, and please report it. |
 | **Performance log** | Off · On | Records a performance profile for problem reports. Leave it off for normal play. |
 
 Always on (not settings): single-sample rendering instead of the game's 4× MSAA (the biggest single
-speed-up), and a set of emulator fixes listed at the top of
+speed-up), a calmer wait for the graphics chip (the game no longer keeps a CPU core spinning, which
+lowers CPU load and heat), and a set of emulator fixes listed at the top of
 [`stage2/native/patch_sdk_vulkan_fixes.py`](stage2/native/patch_sdk_vulkan_fixes.py).
 
 ## Controls

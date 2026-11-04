@@ -16,15 +16,11 @@ final class Settings {
     static final String[] FPS_LABELS = {"60 FPS (console)", "30 FPS", "Uncapped"};
     static final int[] FPS_VALUES = {60, 30, 0};
 
-    // Visual-risk speed-ups (F10/F11: skip render passes with no visible effect so far). Kept
+    // Visual-risk speed-ups (F10-F12: skip render passes and copies with no visible effect so far). Kept
     // switchable so any venue / character / mode can be compared with the original quickly.
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
-    // TEMPORARY test round (v76): remove the row when the round is done.
-    static final String[] TEST_LABELS = {"Off", "Skip RT copies", "Calmer GPU wait"};
-    static final String[] TEST_VALUES = {"", "noxfer", "calmwait"};
-    int test = 0;
 
     private static final String PREFS = "tt_settings";
 
@@ -44,7 +40,6 @@ final class Settings {
         s.showFps = p.getBoolean("show_fps", true);
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.perfLog = p.getBoolean("perf_log", true);
-        s.test = clamp(p.getInt("test_v76", 0), TEST_LABELS.length);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         return s;
     }
@@ -57,7 +52,6 @@ final class Settings {
                 .putBoolean("show_fps", showFps)
                 .putInt("shader_mode", shaderMode)
                 .putBoolean("perf_log", perfLog)
-                .putInt("test_v76", test)
                 .putInt("hidden_passes", hiddenPasses)
                 .commit();
     }
@@ -70,7 +64,6 @@ final class Settings {
                 + " | Show FPS: " + (showFps ? "On" : "Off")
                 + " | Shaders: " + (shaderMode == 0 ? "Async" : "Wait")
                 + " | GPU driver: " + driver
-                + " | Test: " + TEST_LABELS[test]
                 + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }

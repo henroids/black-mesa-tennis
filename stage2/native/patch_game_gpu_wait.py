@@ -9,8 +9,8 @@ over. On the console that's cheap; here the profile shows it keeps one big CPU c
 
 This edit adds a call at the top of that countdown loop (loc_82359E30). On the first
 pass of each countdown (r11 == 100, right after "li r11,100") TtGpuWaitPause (main.cpp)
-may sleep briefly; the GPU check itself is unchanged, so the game still sees the GPU
-finish, just up to ~0.1 ms later. Whether it sleeps is decided at run time.
+sleeps 100 us; the GPU check itself is unchanged, so the game still sees the GPU finish,
+just up to ~0.1 ms later. v76: the thread went from ~86% to ~21% of a core, same FPS.
 
 Edits the locally generated code in place; idempotent. If the generated code doesn't
 look as expected it changes nothing and says so (the build carries on).

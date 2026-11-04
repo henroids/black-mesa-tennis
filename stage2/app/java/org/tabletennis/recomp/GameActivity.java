@@ -50,11 +50,6 @@ public final class GameActivity extends SDLActivity {
         setEnv("XDG_DATA_HOME", new File(base, "xdg").getAbsolutePath());
         setEnv("HOME", base.getAbsolutePath());
         if (settings.hiddenPasses == 1) setEnv("TT_DRAW_ALL_PASSES", "1");
-        if (settings.test > 0) {  // TEMPORARY (v76)
-            if (!Settings.TEST_VALUES[settings.test].isEmpty())
-                setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);
-            shotLabel = "Test: " + Settings.TEST_LABELS[settings.test];
-        }
         if (settings.perfLog) {
             // Native sampling profiler: writes logs/profile.txt every 10 seconds.
             File logs = GameFiles.logsDir(this);
@@ -149,10 +144,6 @@ public final class GameActivity extends SDLActivity {
 
     // ------------------------------------------------------------ screenshots (L3 + R3)
 
-    // TEMPORARY (v76): the active test is written onto screenshots, because uploaded
-    // pictures lose their file names (and with them the time stamp).
-    private String shotLabel = "Test: Off";
-
     private final android.os.Handler shotHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     /** Copies the game surface and saves it to Pictures/TableTennis (shows in the gallery). */
@@ -167,7 +158,6 @@ public final class GameActivity extends SDLActivity {
                 return;
             }
             new Thread(() -> {
-                stampLabel(bitmap, shotLabel);
                 String name = "tt_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss",
                         java.util.Locale.ROOT).format(new java.util.Date()) + ".png";
                 android.content.ContentValues values = new android.content.ContentValues();
@@ -190,25 +180,6 @@ public final class GameActivity extends SDLActivity {
                                                 : "Screenshot failed"));
             }, "tt-screenshot").start();
         }, shotHandler);
-    }
-
-    /** Writes the label in the bottom-left corner: white pixel font on a black bar. */
-    private void stampLabel(android.graphics.Bitmap bitmap, String label) {
-        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
-        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        try {
-            paint.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/GamePocket-Regular.ttf"));
-        } catch (RuntimeException e) {
-            paint.setTypeface(android.graphics.Typeface.MONOSPACE);
-        }
-        paint.setTextSize(bitmap.getHeight() / 30f);
-        float pad = paint.getTextSize() / 2;
-        float w = paint.measureText(label);
-        float bottom = bitmap.getHeight() - pad;
-        paint.setColor(0xFF000000);
-        canvas.drawRect(pad, bottom - paint.getTextSize() - pad, pad * 3 + w, bottom + pad / 2, paint);
-        paint.setColor(0xFFFFFFFF);
-        canvas.drawText(label, pad * 2, bottom - pad / 4, paint);
     }
 
     private void toast(String text) {

@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v76**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v77**).
 
 ---
 
@@ -174,7 +174,8 @@ were removed in v56; the history table below says what each experiment found.
 | **v73** | Where does the frame time go? Diagnostics (picture breaks): main pass with no pixels (vertex work only), main pass skipped, render-target copies (EDRAM transfers) skipped; counters for transfer draws and pixels | Not run; folded into v74 |
 | **v74** | v73's diagnostics + `execute_unclipped_draw_vs_on_cpu=true` | Last-10 s FPS, Off 42.9. Main pass no pixels / skipped: **screen went black and the game stopped drawing the match** (15 / 304 draws per frame instead of ~775), so those numbers (55–56) aren't comparable; inconclusive. **RT copies skipped: 44.3 (+1.4)** and the rally looked normal (26 copy draws, ~4.7 screens of pixels per frame). Unclipped draws on CPU: 43.3 (noise), copies unchanged at 26/frame, CPU load unchanged (GPU thread 60% vs 59%); dropped |
 | **v75** | Only test left: skip render-target copies, played longer (menus, replays, other venues/modes) to see if anything needs them. If nothing breaks, it joins the Hidden passes switch | Folded into v76 |
-| **v76** | Two tests: skip render-target copies (played longer), and **calmer GPU wait**: the game's wait-for-GPU loop `sub_82359DC0` (D3D fence wait: checks the GPU's read pointer, calls `sub_823643E0`, then counts a stack variable down from 100 with the PPC low-priority hint, repeat) kept one big core ~80% busy all match. `stage2/native/patch_game_gpu_wait.py` inserts `TtGpuWaitPause(r11)` at `loc_82359E30`; with `TT_TEST=calmwait` it sleeps 100 µs on each countdown's first pass. Goal: less CPU load / heat at the same FPS Also: Shader threads row removed (owner), fixed at 4 (`--vulkan_pipeline_creation_threads=4`; only affects first-visit shader preparation) | **Not tested yet** |
+| **v76** | Two tests: skip render-target copies (played longer), and **calmer GPU wait**: the game's wait-for-GPU loop `sub_82359DC0` (D3D fence wait: checks the GPU's read pointer, calls `sub_823643E0`, then counts a stack variable down from 100 with the PPC low-priority hint, repeat) kept one big core ~80% busy all match. `stage2/native/patch_game_gpu_wait.py` inserts `TtGpuWaitPause(r11)` at `loc_82359E30`; with `TT_TEST=calmwait` it sleeps 100 µs on each countdown's first pass. Goal: less CPU load / heat at the same FPS Also: Shader threads row removed (owner), fixed at 4 (`--vulkan_pipeline_creation_threads=4`; only affects first-visit shader preparation) | Last-10 s FPS: Off 42.3, **Calmer GPU wait 43.0** with the spinning thread at **~21% of a core instead of ~86%** (top-6 threads ~146% vs ~228% CPU), no visible change. **Skip RT copies 43.7 (+1.4, same as v74)**, normal in the red-carpet hall and the Yasaka venue |
+| **v77** | Both made permanent: GPU wait sleeps (always on, not a visual change); render-target copies skipped as **F12** under the Hidden passes switch. Test row, screenshot stamp and test counters removed | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -192,6 +193,7 @@ removable, so a problem in another venue/character/mode can be checked and trace
 |---|---|---|---|
 | F10 | v61 | depth-only passes into 640- and 1120-wide depth buffers (~37 + ~57 draws) | launcher Hidden passes → Drawn |
 | F11 | v67 | full-size pass writing neither colour nor depth (~96 draws) | launcher Hidden passes → Drawn |
+| F12 | v77 | render-target copies between passes (~26 draws, ~5 screens of pixels per frame); seen fine in 2 venues | launcher Hidden passes → Drawn |
 | F9 (lower risk) | v55 | GPU re-conversion of textures whose guest bytes are unchanged | remove section F9 |
 | Game MSAA 1 sample | ~v20 | the game's 4-sample tiled rendering | `TtGameMsaaOverride` in main.cpp |
 

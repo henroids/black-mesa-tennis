@@ -17,6 +17,8 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F9        skip re-converting textures whose guest bytes didn't change          ~+1 FPS
   F10       skip two depth-only passes with no visible effect (640/1120 wide)     ~+2 FPS
   F11       skip a full-size pass that writes neither colour nor depth (~96 draws) ~+0.5 FPS
+  F12       skip render-target copies (EDRAM transfers between passes, ~26/frame)  ~+1.4 FPS
+  (F10-F12 are switched off together by TT_DRAW_ALL_PASSES=1: launcher "Hidden passes")
 
 DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D1  tt_frame_stats  [0] guest vblanks [1] CP wait-for-memory sleeps [2] their ns [3] swaps
@@ -472,6 +474,19 @@ edit(CP, (
     includes=("#include <cstdlib>",))
 done.append("F10/F11 passes with no visible effect skipped (TT_DRAW_ALL_PASSES=1 draws them)")
 
+# ---- F12 Skip render-target copies. When the game switches between its full, half and
+#      quarter-size passes, the emulator copies EDRAM contents between host render targets
+#      (~26 draws, ~5 screens of pixels per frame). Skipping them measured +1.4 FPS twice
+#      (v74, v76) with no visible change in two venues. Visual risk: listed in HANDOFF.md,
+#      switched off with the other skips by TT_DRAW_ALL_PASSES=1.
+edit("src/graphics/vulkan/render_target_cache.cpp", (
+    "            command_buffer.CmdVkDraw(transfer_vertex_count, 1, 0, 0);\n",
+    "            static const bool tt_skip_copies =  // tt-android F12\n"
+    "                std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
+    "            if (!tt_skip_copies) command_buffer.CmdVkDraw(transfer_vertex_count, 1, 0, 0);\n"),
+    includes=("#include <cstdlib>",))
+done.append("F12 render-target copies skipped (TT_DRAW_ALL_PASSES=1 keeps them)")
+
 # ====================================================================== DIAGNOSTICS
 
 # ---- D1 frame pacing: guest vblanks, command-processor WAIT_REG_MEM sleeps, swaps
@@ -525,31 +540,5 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
-
-# ========================================================= TEMPORARY TEST ROUND (v76)
-# Remove this section once the round's results are in (HANDOFF: clean up as you go).
-# v74: skipping the render-target copies (EDRAM ownership transfers between host render
-# targets: ~26 draws, ~4.7 screens of pixels per frame) gave +1.4 FPS and a normal-looking
-# rally. This round plays with it longer, everywhere, to see whether anything needs them.
-#   TT_TEST=noxfer   render-target copies are skipped
-
-# ---- T3 render-target transfers: [12] draws, [13] pixels; noxfer skips them
-edit("src/graphics/vulkan/render_target_cache.cpp", (
-    "            const Transfer::Rectangle& transfer_rectangle = transfer_invocation_rectangles[j];\n",
-    "            const Transfer::Rectangle& transfer_rectangle = transfer_invocation_rectangles[j];\n"
-    "            __atomic_fetch_add(&tt_work_stats[13],  // T3\n"
-    "                               uint64_t(transfer_rectangle.width_pixels) *\n"
-    "                                   transfer_rectangle.height_pixels,\n"
-    "                               __ATOMIC_RELAXED);\n"), (
-    "            command_buffer.CmdVkDraw(transfer_vertex_count, 1, 0, 0);\n",
-    "            static const bool tt_noxfer = [] {  // T3\n"
-    "              const char* v = std::getenv(\"TT_TEST\");\n"
-    "              return v && std::strcmp(v, \"noxfer\") == 0;\n"
-    "            }();\n"
-    "            __atomic_fetch_add(&tt_work_stats[12], 1, __ATOMIC_RELAXED);\n"
-    "            if (!tt_noxfer) command_buffer.CmdVkDraw(transfer_vertex_count, 1, 0, 0);\n"),
-    prelude='extern "C" uint64_t tt_work_stats[16];  // T3\n',
-    includes=("#include <cstdint>", "#include <cstdlib>", "#include <cstring>"))
-done.append("T3 test: TT_TEST=noxfer skips render-target copies; transfer counters")
 
 print("\n".join(done))

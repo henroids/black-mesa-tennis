@@ -29,14 +29,11 @@ extern "C" REX_FUNC(__imp__VdSwap);
 // EDRAM tile instead of drawing the scene once per strip (~20 -> ~29 FPS when added;
 // host FXAA still smooths edges).
 // The game's wait-for-GPU loop (sub_82359DC0, see patch_game_gpu_wait.py) spins on a CPU
-// core while the GPU is busy. TEMPORARY test (v76, TT_TEST=calmwait): on the first pass of
-// each spin countdown, sleep 100 us instead, so the core can idle. The GPU check is unchanged.
+// core while the GPU is busy, which is all match long. On the first pass of each spin
+// countdown, sleep 100 us instead (the GPU check is unchanged). v76: that thread went from
+// ~86% to ~21% of a big core, same FPS.
 extern "C" void TtGpuWaitPause(uint32_t countdown) {
-  static const bool enabled = [] {
-    const char* v = std::getenv("TT_TEST");
-    return v && std::string_view(v) == "calmwait";
-  }();
-  if (enabled && countdown == 100) std::this_thread::sleep_for(std::chrono::microseconds(100));
+  if (countdown == 100) std::this_thread::sleep_for(std::chrono::microseconds(100));
 }
 
 extern "C" uint32_t TtGameMsaaOverride(uint32_t samples) {
