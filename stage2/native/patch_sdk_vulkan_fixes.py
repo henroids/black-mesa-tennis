@@ -526,50 +526,12 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
 
-# ========================================================= TEMPORARY TEST ROUND (v73)
+# ========================================================= TEMPORARY TEST ROUND (v75)
 # Remove this section once the round's results are in (HANDOFF: clean up as you go).
-# v72: clipping the main pass to half the screen gave only +3.4 FPS (pixel work there is
-# ~3 ms of ~22.6 ms). This round finds where the rest goes. All tests are diagnostics that
-# break the picture; only their FPS matters.
-#   TT_TEST=nopix    main-pass draws keep their vertex work but draw no pixels
-#   TT_TEST=nomain   main-pass draws are skipped entirely
-#   TT_TEST=noxfer   render-target copies (EDRAM transfers between passes) are skipped
-
-# ---- T1 Main-pass census [10] + nomain test
-edit(CP, (
-    "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n",
-    "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
-    "  if (regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
-    "      normalized_depth_control.z_enable && normalized_depth_control.z_write_enable &&\n"
-    "      pixel_shader &&\n"
-    "      draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())) {  // T1\n"
-    "    __atomic_fetch_add(&tt_work_stats[10], 1, __ATOMIC_RELAXED);\n"
-    "    static const bool tt_nomain = [] {\n"
-    "      const char* v = std::getenv(\"TT_TEST\");\n"
-    "      return v && std::strcmp(v, \"nomain\") == 0;\n"
-    "    }();\n"
-    "    if (tt_nomain) {\n"
-    "      __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
-    "      return true;\n"
-    "    }\n"
-    "  }\n"),
-    includes=("#include <cstring>",))
-
-# ---- T2 nopix: zero-width scissor for main-pass draws (vertices still processed)
-edit(CP, (
-    "  scissor_rect.extent.height = scissor.extent[1];\n"
-    "  SetScissor(scissor_rect);\n",
-    "  scissor_rect.extent.height = scissor.extent[1];\n"
-    "  static const bool tt_nopix = [] {  // T2\n"
-    "    const char* v = std::getenv(\"TT_TEST\");\n"
-    "    return v && std::strcmp(v, \"nopix\") == 0;\n"
-    "  }();\n"
-    "  if (tt_nopix && regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280 &&\n"
-    "      normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) {\n"
-    "    scissor_rect.extent.width = 0;\n"
-    "  }\n"
-    "  SetScissor(scissor_rect);\n"),
-    includes=("#include <cstring>",))
+# v74: skipping the render-target copies (EDRAM ownership transfers between host render
+# targets: ~26 draws, ~4.7 screens of pixels per frame) gave +1.4 FPS and a normal-looking
+# rally. This round plays with it longer, everywhere, to see whether anything needs them.
+#   TT_TEST=noxfer   render-target copies are skipped
 
 # ---- T3 render-target transfers: [12] draws, [13] pixels; noxfer skips them
 edit("src/graphics/vulkan/render_target_cache.cpp", (
@@ -588,6 +550,6 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "            if (!tt_noxfer) command_buffer.CmdVkDraw(transfer_vertex_count, 1, 0, 0);\n"),
     prelude='extern "C" uint64_t tt_work_stats[16];  // T3\n',
     includes=("#include <cstdint>", "#include <cstdlib>", "#include <cstring>"))
-done.append("T1-T3 tests: TT_TEST=nopix / nomain / noxfer; main-pass and transfer counters")
+done.append("T3 test: TT_TEST=noxfer skips render-target copies; transfer counters")
 
 print("\n".join(done))

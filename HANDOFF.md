@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-01 (build **v74**).
+test showed, and where things stand now. Last updated 2026-11-01 (build **v75**).
 
 ---
 
@@ -170,7 +170,8 @@ were removed in v56; the history table below says what each experiment found.
 | **v71** | Test: skip one pass-B shader at a time | Never run: owner chose to keep shadows (cheap, look good) and pinned the question |
 | **v72** | Main scene pass round: census; gamma targets 8-bit; main pass clipped to left half; `TU_DEBUG=nolrz`; `TU_DEBUG=noubwc` | Last-10 s rally FPS: Off 44.2. Gamma 8-bit 44.3: no main-pass draw uses a gamma target, so it does nothing (dropped). **Left half 47.6**: halving main-pass pixels saves only ~1.6 ms, so pixel work there is ~3 ms of ~22.6 ms; the main pass isn't pixel-bound. No LRZ 44.9 (no effect: LRZ isn't helping). **No UBWC 39.0** (compression is worth ~5 FPS; already on). Main pass ≈ 390 draws/frame |
 | **v73** | Where does the frame time go? Diagnostics (picture breaks): main pass with no pixels (vertex work only), main pass skipped, render-target copies (EDRAM transfers) skipped; counters for transfer draws and pixels | Not run; folded into v74 |
-| **v74** | v73's three diagnostics + `--execute_unclipped_draw_vs_on_cpu=true` (upstream Xenia's default; the Naruto recomps patch it on because unclipped full-screen draws otherwise claim all of EDRAM and cause spurious render-target ownership transfers) | **Not tested yet** |
+| **v74** | v73's diagnostics + `execute_unclipped_draw_vs_on_cpu=true` | Last-10 s FPS, Off 42.9. Main pass no pixels / skipped: **screen went black and the game stopped drawing the match** (15 / 304 draws per frame instead of ~775), so those numbers (55–56) aren't comparable; inconclusive. **RT copies skipped: 44.3 (+1.4)** and the rally looked normal (26 copy draws, ~4.7 screens of pixels per frame). Unclipped draws on CPU: 43.3 (noise), copies unchanged at 26/frame; dropped |
+| **v75** | Only test left: skip render-target copies, played longer (menus, replays, other venues/modes) to see if anything needs them. If nothing breaks, it joins the Hidden passes switch | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
