@@ -5,6 +5,7 @@ import android.app.Presentation;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
@@ -273,10 +274,10 @@ public final class LauncherActivity extends Activity {
         row.labelView = text(17, WHITE);
         row.labelView.setText(row.label);
         row.valueView = text(17, GREY);
-        row.valueView.setGravity(Gravity.END);
+        row.valueView.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         row.valueView.setSingleLine(true);
         v.addView(row.labelView, new LinearLayout.LayoutParams(0, -2, 1f));
-        v.addView(row.valueView, new LinearLayout.LayoutParams(-2, -2));
+        v.addView(row.valueView, new LinearLayout.LayoutParams(-2, -1));
         v.setOnClickListener(view -> {
             if (selected == index) row.activate(); else selected = index;
             render();
@@ -286,7 +287,12 @@ public final class LauncherActivity extends Activity {
         v.setFocusable(false);
         v.setDefaultFocusHighlightEnabled(false);
         row.view = v;
-        list.addView(v, new LinearLayout.LayoutParams(-1, -2));
+        // Fixed row height from the pixel font's own line height: the selected row's "‹ ›"
+        // come from a taller fallback font and used to make that row grow, which pushed the
+        // rows below it down every time the selection moved.
+        Paint.FontMetricsInt fm = row.labelView.getPaint().getFontMetricsInt();
+        int rowHeight = fm.descent - fm.ascent + v.getPaddingTop() + v.getPaddingBottom();
+        list.addView(v, new LinearLayout.LayoutParams(-1, rowHeight));
     }
 
     private void render() {
