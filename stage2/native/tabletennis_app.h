@@ -107,8 +107,8 @@ inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
   constexpr int kRows = sizeof(kStitches) / sizeof(kStitches[0]);
   constexpr int kCols = 52, kCell = 5;
   // Pixel runs of one 5x5 X, row by row: {row, first x, end x}.
-  static const int kRuns[][3] = {{0, 0, 2}, {0, 3, 5}, {1, 0, 5}, {2, 1, 4},
-                                 {3, 0, 5}, {4, 0, 2}, {4, 3, 5}};
+  static const int kRuns[][3] = {{0, 0, 1}, {0, 4, 5}, {1, 0, 2}, {1, 3, 5}, {2, 1, 4},
+                                 {3, 0, 2}, {3, 3, 5}, {4, 0, 1}, {4, 4, 5}};
   const ImU32 white = IM_COL32(48, 48, 48, 255), red = IM_COL32(43, 8, 8, 255);
   const float left = std::floor(centre.x - kCols * kCell / 2.0f);
   const float top = std::floor(centre.y - kRows * kCell / 2.0f);
