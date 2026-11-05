@@ -18,6 +18,8 @@ Usage:
                  solid   pixels fill their whole cell; same-colour pixels merge
                  stitch  every pixel is a cross-stitch X on black, like the project logo
                          (black pixels are left empty, so the black shows through)
+                 beads   every pixel is a round fused bead with a hole (like Perler beads),
+                         on black; black pixels are left empty
   --grey       third tone between black and white: "dark" (default, dark grey),
                "light" (very light grey) or "none" (black and white only)
 """
@@ -37,7 +39,7 @@ except ImportError:
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif"}
 BACKGROUND = 38  # dark grey seen between pixels
 SUPERSAMPLE = 4  # pixels are drawn 4x larger, then scaled down, so every edge is even
-STYLES = ("border", "rounded", "jitter", "solid", "stitch")
+STYLES = ("border", "rounded", "jitter", "solid", "stitch", "beads")
 GREYS = {"none": None, "light": 200, "dark": 96}
 
 
@@ -84,8 +86,8 @@ def draw_pixels(tones, cell_size, style):
     """Draws one square per cell. All sizes are fractions of a cell, so the look is the
     same at any --cell-size; drawing big and scaling down keeps every gap the same width."""
     rows, cols = tones.shape
-    if style == "stitch":
-        return draw_stitches(tones, cell_size)
+    if style in ("stitch", "beads"):
+        return draw_stamps(tones, cell_size, style)
     if style == "solid":
         return Image.fromarray(tones).convert("RGB").resize((cols * cell_size, rows * cell_size),
                                                            Image.NEAREST)
@@ -107,20 +109,29 @@ def draw_pixels(tones, cell_size, style):
     return canvas.resize((cols * cell_size, rows * cell_size), Image.LANCZOS).convert("RGB")
 
 
-def draw_stitches(tones, cell_size):
-    """One cross-stitch X per cell on black, drawn at the final size with no scaling, so every
-    stitch is pixel-exact and identical. Proportions match the logo: a 24 px cell has a 1 px
-    margin and 9 px thick arms."""
+def stamp_for(style, c):
+    """The shape drawn in one c x c cell, as a True/False pixel mask."""
+    yy, xx = np.mgrid[0:c, 0:c]
+    if style == "beads":
+        # A round bead with a hole in the middle, a hair smaller than the cell.
+        centre = (c - 1) / 2
+        d = np.hypot(xx - centre, yy - centre)
+        return (d <= c / 2 - 0.35) & (d >= c * 0.17)
+    # Cross stitch, in the logo's proportions: a 24 px cell has a 1 px margin and 9 px arms.
+    m, k = round(c / 24), max(0, round(c * 4 / 24))
+    inside = (xx >= m) & (xx < c - m) & (yy >= m) & (yy < c - m)
+    return inside & ((np.abs(xx - yy) <= k) | (np.abs(xx + yy - (c - 1)) <= k))
+
+
+def draw_stamps(tones, cell_size, style):
+    """One stitch or bead per cell on black, drawn at the final size with no scaling, so every
+    one is pixel-exact and identical."""
     rows, cols = tones.shape
     c = cell_size
-    m, k = round(c / 24), max(0, round(c * 4 / 24))
-    yy, xx = np.mgrid[0:c, 0:c]
-    inside = (xx >= m) & (xx < c - m) & (yy >= m) & (yy < c - m)
-    stamp = inside & ((np.abs(xx - yy) <= k) | (np.abs(xx + yy - (c - 1)) <= k))
-    # Paint each cell's tone over its stamp: tile the tones up to full size, then keep only
-    # the stamp's pixels.
+    # Paint each cell's tone over its shape: tile the tones up to full size, then keep only
+    # the shape's pixels.
     full = np.kron(tones, np.ones((c, c), np.uint8))
-    mask = np.tile(stamp, (rows, cols))
+    mask = np.tile(stamp_for(style, c), (rows, cols))
     return Image.fromarray(np.where(mask, full, 0).astype(np.uint8)).convert("RGB")
 
 
@@ -131,7 +142,7 @@ def main():
     ap.add_argument("--cells", type=int, default=96)
     ap.add_argument("--cell-size", type=int, default=15)
     ap.add_argument("--style", choices=STYLES, default="border",
-                    help="border (default), rounded, jitter, solid or stitch")
+                    help="border (default), rounded, jitter, solid, stitch or beads")
     ap.add_argument("--grey", choices=["none", "light", "dark"], default="dark",
                     help="third tone: dark grey (default), light grey, or none for black and white only")
     args = ap.parse_args()
