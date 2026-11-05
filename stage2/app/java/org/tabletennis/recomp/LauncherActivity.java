@@ -25,6 +25,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -241,13 +242,24 @@ public final class LauncherActivity extends Activity {
         plp.bottomMargin = dp(40);
         root.addView(pong, plp);
 
-        list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
+        // The menu sits in a frame with the logo behind it: small, faint, centred on the rows.
+        // The image is drawn at its own pixel size (drawable-nodpi, no scaling) so the stitches
+        // stay sharp.
+        FrameLayout menu = new FrameLayout(this);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
         lp.leftMargin = screenW / 4;
         lp.topMargin = dp(30);
-        root.addView(list, lp);
+        root.addView(menu, lp);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(org.libsdl.app.R.drawable.menu_logo);  // app namespace is org.libsdl.app
+        logo.setScaleType(ImageView.ScaleType.CENTER);
+        menu.addView(logo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        menu.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
         for (int i = 0; i < rows.size(); i++) addRowView(rows.get(i), i);
 
         message = text(13, GREY);
@@ -299,7 +311,7 @@ public final class LauncherActivity extends Activity {
         for (int i = 0; i < rows.size(); i++) {
             Row r = rows.get(i);
             boolean on = i == selected;
-            r.view.setBackgroundColor(on ? WHITE : BLACK);
+            r.view.setBackgroundColor(on ? WHITE : Color.TRANSPARENT);  // logo shows through
             r.labelView.setTextColor(on ? BLACK : WHITE);
             String value = r.value();
             if (on && r.changeable()) value = "‹ " + value + " ›";
