@@ -20,6 +20,9 @@ Usage:
                          (black pixels are left empty, so the black shows through)
                  beads   every pixel is a round fused bead with a hole (like Perler beads),
                          on black; black pixels are left empty
+                 melted  beads, with about a third of them slightly melted from the iron
+                         (a bit wider and wobblier, smaller off-centre hole); the same
+                         beads melt every run
   --grey       third tone between black and white: "dark" (default, dark grey),
                "light" (very light grey) or "none" (black and white only)
 """
@@ -39,7 +42,7 @@ except ImportError:
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif"}
 BACKGROUND = 38  # dark grey seen between pixels
 SUPERSAMPLE = 4  # pixels are drawn 4x larger, then scaled down, so every edge is even
-STYLES = ("border", "rounded", "jitter", "solid", "stitch", "beads")
+STYLES = ("border", "rounded", "jitter", "solid", "stitch", "beads", "melted")
 GREYS = {"none": None, "light": 200, "dark": 96}
 
 
@@ -86,6 +89,8 @@ def draw_pixels(tones, cell_size, style):
     """Draws one square per cell. All sizes are fractions of a cell, so the look is the
     same at any --cell-size; drawing big and scaling down keeps every gap the same width."""
     rows, cols = tones.shape
+    if style == "melted":
+        return draw_melted(tones, cell_size)
     if style in ("stitch", "beads"):
         return draw_stamps(tones, cell_size, style)
     if style == "solid":
@@ -135,6 +140,39 @@ def draw_stamps(tones, cell_size, style):
     return Image.fromarray(np.where(mask, full, 0).astype(np.uint8)).convert("RGB")
 
 
+def draw_melted(tones, c, share=0.35, seed=7):
+    """Beads, with a random share of them slightly melted: a bit wider and wobblier, with a
+    smaller, off-centre hole. Drawn at the final size with hard pixel edges (no smoothing).
+    Melted beads can spread just past their cell, so they're drawn last, on top of their
+    neighbours."""
+    rows, cols = tones.shape
+    rng = np.random.default_rng(seed)  # same picture every run
+    melt = np.where(rng.random((rows, cols)) < share, rng.uniform(0.3, 1.0, (rows, cols)), 0.0)
+    pad = 2  # room for a melted bead to spread past its cell
+    out = np.zeros((rows * c + 2 * pad, cols * c + 2 * pad), np.uint8)
+    n = c + 2 * pad
+    yy, xx = np.mgrid[0:n, 0:n]
+    centre = (n - 1) / 2
+    dx, dy = xx - centre, yy - centre
+    dist, angle = np.hypot(dx, dy), np.arctan2(dy, dx)
+    plain = (dist <= c / 2 - 0.35) & (dist >= c * 0.17)  # same bead as --style beads
+    for m, r, k in sorted((melt[r, k], r, k) for r in range(rows) for k in range(cols)):
+        tone = tones[r, k]
+        if tone == 0:
+            continue
+        if m == 0:
+            shape = plain
+        else:
+            p1, p2 = rng.uniform(0, 2 * np.pi, 2)
+            wobble = 1 + m * (0.07 * np.sin(2 * angle + p1) + 0.05 * np.sin(3 * angle + p2))
+            outer = (c / 2 - 0.35 + m * 0.9) * wobble
+            hx, hy = rng.uniform(-1, 1, 2) * m * c * 0.06
+            hole = c * 0.17 * (1 - 0.45 * m)
+            shape = (dist <= outer) & (np.hypot(dx - hx, dy - hy) >= hole)
+        out[r * c:r * c + n, k * c:k * c + n][shape] = tone
+    return Image.fromarray(out[pad:pad + rows * c, pad:pad + cols * c]).convert("RGB")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Pixel-grid CRT filter for a folder of photos")
     ap.add_argument("album", type=Path, help="folder with the original photos")
@@ -142,7 +180,7 @@ def main():
     ap.add_argument("--cells", type=int, default=96)
     ap.add_argument("--cell-size", type=int, default=15)
     ap.add_argument("--style", choices=STYLES, default="border",
-                    help="border (default), rounded, jitter, solid, stitch or beads")
+                    help="border (default), rounded, jitter, solid, stitch, beads or melted")
     ap.add_argument("--grey", choices=["none", "light", "dark"], default="dark",
                     help="third tone: dark grey (default), light grey, or none for black and white only")
     args = ap.parse_args()
