@@ -49,6 +49,82 @@ void TtStartProfiler();  // tt_profiler.cpp
 void TtSetGuestTranslator(const uint8_t* (*translate)(uint32_t));
 inline rex::memory::Memory* g_tt_memory = nullptr;
 
+// Black Mesa Tennis logo (cross-stitch paddles), drawn faint behind the loading text in the
+// start screen's style. One character per stitch: w = white, r = red, . = empty. Each stitch
+// is a 5x5-pixel X drawn as whole-pixel rectangles so it stays sharp. 20% brightness, the
+// same as the start screen's menu_logo.png.
+inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
+  static const char* const kStitches[] = {
+      "...................................rrrrrrr..........",
+      ".........wwwwwwwww..............rrrrrrrrrrr.........",
+      "......wwwwwwwwwwwwww..........rrrrrrrrrrrrrrrr......",
+      ".....wwwwwwwwwwwwwwwww.......rrrrrrrrrrrrrrrrrr.....",
+      "....wwwwwwwwwwwwwwwwwww....rrrrrrrrrrrrrrrrrrrrr....",
+      "...wwwwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrr...",
+      "..wwwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrr..",
+      "..wwwwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrr..",
+      ".wwwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      ".wwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      "wwwwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      "wwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      "wwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "wwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "wwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "wwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "wwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      "wwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      ".wwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      ".wwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      "..wwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrr..",
+      "..wwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrr..",
+      "..wwwwwwwwwwwwwwwwww...rrrrrrrrrrrrrrrrrrrrrrrrrr...",
+      "...wwwwwwwwwwwwwwwwww.w..rrrrrrrrrrrrrrrrrrrrrrrr...",
+      "....wwwwwwwwwwwwwwwwww.ww..rrrrrrrrrrrrrrrrrrrrr....",
+      "....wwwwwwwwwwwwwwwwww.www..rrrrrrrrrrrrrrrrrrrr....",
+      ".....wwwwwwwwwwwwwwww...wwww..rrrrrrrrrrrrrrrrr.....",
+      "......wwwwwwwwwwwww..ww.wwwwww..rrrrrrrrrrrrrr......",
+      ".......wwwwwwwwwww..ww..wwwwwwww..rrrrrrrrrrr.......",
+      "........wwwwwwww..wwww.wwwwwwwwwww.rrrrrrrrr........",
+      "..........wwwww.wwwwwwwwwwwwwwwwwww.rrrrrr..........",
+      "................w..ww..wwwwwwwww....................",
+      "......................w..wwwww......................",
+      ".....................ww...wwww......................",
+      "....................ww...www.ww.....................",
+      "....................w....ww...w.....................",
+      "...................ww...www....w....................",
+      "...................w....ww.w...w....................",
+      "..................w....ww..ww...w...................",
+      ".................ww...www.www....w..................",
+      "................ww....www..ww....w..................",
+      "................ww...www...www....w.................",
+      "...............wwwwwwww.....www..www................",
+      "...............wwwwwwww.....wwwwwwww................",
+      "...............wwwwwww.......wwwwwww................",
+      "................wwwwww........wwwwww................",
+      ".................wwww.........wwww.................."
+,
+  };
+  constexpr int kRows = sizeof(kStitches) / sizeof(kStitches[0]);
+  constexpr int kCols = 52, kCell = 5;
+  // Pixel runs of one 5x5 X, row by row: {row, first x, end x}.
+  static const int kRuns[][3] = {{0, 0, 2}, {0, 3, 5}, {1, 0, 5}, {2, 1, 4},
+                                 {3, 0, 5}, {4, 0, 2}, {4, 3, 5}};
+  const ImU32 white = IM_COL32(48, 48, 48, 255), red = IM_COL32(43, 8, 8, 255);
+  const float left = std::floor(centre.x - kCols * kCell / 2.0f);
+  const float top = std::floor(centre.y - kRows * kCell / 2.0f);
+  for (int r = 0; r < kRows; r++) {
+    for (int c = 0; c < kCols; c++) {
+      const char v = kStitches[r][c];
+      if (v == '.') continue;
+      const float x = left + c * kCell, y = top + r * kCell;
+      for (const auto& run : kRuns) {
+        draw->AddRectFilled(ImVec2(x + run[1], y + run[0]), ImVec2(x + run[2], y + run[0] + 1),
+                            v == 'r' ? red : white);
+      }
+    }
+  }
+}
+
 class FpsOverlayDialog : public rex::ui::ImGuiDialog {
  public:
   explicit FpsOverlayDialog(rex::ui::ImGuiDrawer* drawer, ImFont* loading_font,
@@ -69,6 +145,8 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
       draw->AddRectFilled(viewport->Pos,
           ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
           IM_COL32(0, 0, 0, 255));
+      TtDrawLoadingLogo(draw, ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f,
+                                     viewport->Pos.y + viewport->Size.y * 0.5f));
       if (loading_sub_font_) {
         // Start-screen look (Android launcher / title card): black, GamePocket pixel font,
         // white title, grey line under it, left-aligned and vertically centred. Positions are
