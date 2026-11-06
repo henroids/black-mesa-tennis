@@ -52,7 +52,7 @@ inline rex::memory::Memory* g_tt_memory = nullptr;
 // Black Mesa Tennis logo (dot-grid paddles: grey and red, white handles), drawn faint behind
 // the loading text in the start screen's style. One character per dot, 7 colours (see Colour);
 // '.' = empty. Each dot is a 4x4-pixel round dot on a 6-pixel pitch, drawn as whole-pixel
-// rectangles so it stays sharp. 30% brightness, the same as the start screen's menu_logo.png.
+// rectangles so it stays sharp. 40% brightness, the same as the start screen's menu_logo.png.
 inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
   static const char* const kDots[] = {
       ".........ddddd...............RRRRRR........",
@@ -102,13 +102,13 @@ inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
   static const int kRuns[][3] = {{0, 1, 3}, {1, 0, 4}, {2, 0, 4}, {3, 1, 3}};
   auto colour = [](char v) -> ImU32 {
     switch (v) {
-      case 'r': return IM_COL32(57, 0, 1, 255);
-      case 'R': return IM_COL32(27, 0, 1, 255);
-      case 'g': return IM_COL32(42, 42, 41, 255);
-      case 'G': return IM_COL32(27, 28, 26, 255);
-      case 'd': return IM_COL32(13, 13, 11, 255);
-      case 'w': return IM_COL32(75, 75, 75, 255);
-      case 'l': return IM_COL32(61, 61, 60, 255);
+      case 'r': return IM_COL32(76, 0, 2, 255);
+      case 'R': return IM_COL32(36, 1, 1, 255);
+      case 'g': return IM_COL32(56, 56, 55, 255);
+      case 'G': return IM_COL32(37, 37, 35, 255);
+      case 'd': return IM_COL32(17, 17, 15, 255);
+      case 'w': return IM_COL32(100, 100, 100, 255);
+      case 'l': return IM_COL32(81, 81, 80, 255);
       default: return 0;
     }
   };

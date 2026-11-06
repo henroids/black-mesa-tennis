@@ -54,7 +54,7 @@ for dpi, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 19
     on_square(hi, s, 0.88, (0, 0, 0, 255)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
     fg = s * 108 // 48
     on_square(hi, fg, 0.60, (0, 0, 0, 0)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_foreground.png')
-FAINT = 0.3  # brightness of the faint start-screen / loading-screen logo
+FAINT = 0.4  # brightness of the faint start-screen / loading-screen logo
 # Start screen: faint logo at its own pixel size, pitch 6 / dot 4, pixel-exact dots
 DOT4 = ['.##.', '####', '####', '.##.']
 w, h = COLS * 6, ROWS * 6
