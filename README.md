@@ -60,6 +60,12 @@ exactly what it wrote and when.
 - **Wrote the docs:** this README, [docs/BUILDING.md](docs/BUILDING.md),
   [HANDOFF.md](HANDOFF.md), and the licensing notices.
 
+### The full development log
+Every testing round, from the first fixes through v83, is written up in
+**[docs/DEVLOG.md](docs/DEVLOG.md)**. For each round it covers what we tried, what the logs
+showed, what we concluded, and what changed, plus a list of the ideas that didn't help and the
+measurements behind each one.
+
 ### What I did
 - **Had the idea and set the direction:** porting the PC recompilation to Android so it runs
   natively on my AYN Thor, plus what the app should do and what was worth chasing.
@@ -243,6 +249,7 @@ Please don't attach ISOs, APKs or other game files.
 | `tools/use_version.sh` | Switch to an earlier build (`bash tools/use_version.sh 61`) |
 | `assets/` | Images for this README (original artwork, no game assets) |
 | `docs/BUILDING.md` | Detailed build steps, updating, troubleshooting |
+| `docs/DEVLOG.md` | Development log: every testing round, its data and conclusion |
 | `HANDOFF.md` | Developer notes: every change, what it measured, current bottleneck |
 | `NOTICE.md`, `LICENSE`, `licenses/` | Credits, license, and third-party license texts |
 
