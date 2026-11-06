@@ -32,7 +32,7 @@ def render(pitch, dot, scale=1.0, size=None, ss=4, bg=(0, 0, 0, 255)):
     for r, row in enumerate(grid):
         for c, ch in enumerate(row):
             if ch == '.': continue
-            col = tuple(int(v * scale) for v in PALETTE[ch]) + (255,)
+            col = tuple(min(255, int(v * scale)) for v in PALETTE[ch]) + (255,)
             x, y = (c * pitch + off) * ss, (r * pitch + off) * ss
             d.ellipse([x, y, x + dot * ss - 1, y + dot * ss - 1], fill=col)
     img = big.resize((w, h), Image.LANCZOS)
@@ -49,7 +49,10 @@ def on_square(logo, side, fill_frac, bg):
 hi = render(48, 32)  # master, same proportions as the source (dot 8 / pitch 12)
 # README icon: black square, logo filling ~80%
 on_square(hi, 384, 0.80, (0, 0, 0, 255)).save(f'{REPO}/assets/icon.png')
-# App icon, square: legacy icon and the adaptive foreground (logo fills ~90% of the visible 72/108 square)
+# App icon, square: legacy icon and the adaptive foreground (logo fills ~90% of the visible 72/108 square),
+# 30% brighter than the source colours (owner)
+ICON_BRIGHT = 1.3
+hi = render(48, 32, ICON_BRIGHT)
 for dpi, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}.items():
     on_square(hi, s, 0.88, (0, 0, 0, 255)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
     fg = s * 108 // 48
