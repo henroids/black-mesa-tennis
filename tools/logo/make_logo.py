@@ -54,7 +54,8 @@ for dpi, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 19
     on_square(hi, s, 0.88, (0, 0, 0, 255)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
     fg = s * 108 // 48
     on_square(hi, fg, 0.60, (0, 0, 0, 0)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_foreground.png')
-# Start screen: faint (20%) logo at its own pixel size, pitch 6 / dot 4, pixel-exact dots
+FAINT = 0.3  # brightness of the faint start-screen / loading-screen logo
+# Start screen: faint logo at its own pixel size, pitch 6 / dot 4, pixel-exact dots
 DOT4 = ['.##.', '####', '####', '.##.']
 w, h = COLS * 6, ROWS * 6
 faint = Image.new('RGBA', (w, h), (0, 0, 0, 0))
@@ -62,7 +63,7 @@ px = faint.load()
 for r, row in enumerate(grid):
     for c, ch in enumerate(row):
         if ch == '.': continue
-        col = tuple(int(v * 0.2) for v in PALETTE[ch]) + (255,)
+        col = tuple(int(v * FAINT) for v in PALETTE[ch]) + (255,)
         for yy, line in enumerate(DOT4):
             for xx, m in enumerate(line):
                 if m == '#': px[c * 6 + 1 + xx, r * 6 + 1 + yy] = col
