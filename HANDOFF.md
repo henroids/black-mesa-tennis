@@ -26,7 +26,7 @@ test showed, and where things stand now. Last updated 2026-11-05 (build **v82**,
 
 | What | Link | How it's used |
 |---|---|---|
-| **This project** (private) | https://github.com/henroids/black-mesa-tennis | Build scripts, SDK patches, Android app. GPL-3.0. |
+| **This project** (public) | https://github.com/henroids/black-mesa-tennis | Build scripts, SDK patches, Android app. GPL-3.0. |
 | PC static recomp (base) | https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC | The recompiled-game project this port is built from (MIT). `stage1/overlay/project/*`, `native/main.cpp`, `tabletennis_app.h`, `CMakeLists.txt` adapted from it. |
 | ReXGlue SDK v0.10.0 | https://github.com/rexglue/rexglue-sdk (release zip `rexglue-sdk-0.10.0-linux-amd64.zip`) | Static recompiler + runtime (Xenia-derived: Xenos GPU emulation on Vulkan, kernel HLE). Patched at build time by `stage2/native/patch_sdk_vulkan_fixes.py`. Upstream issues referenced: **#441, #456, #507**. |
 | MCLA Android port (template) | https://github.com/gabrielbskk/mcla-recomp-android-g | Android build layout, SDL activity, custom GPU driver loader (`android_gpu_driver.cpp`). GPL-3.0, hence this repo's license. |
@@ -61,16 +61,8 @@ test showed, and where things stand now. Last updated 2026-11-05 (build **v82**,
   sources); ≤ v55 expected an SDK patched in place, so re-run stage 1 first for those.
   (Git tags can't be pushed from the assistant's environment, hence the script.)
 
-### Branches (read this first)
-- **`copilot`**: **your branch.** Commit and push all your work here. It started as an exact
-  copy of `main` at build v49.
-- **`main`**: the other assistant's (Claude's) line of work. Don't push to it. Good results
-  can be merged into it later through a pull request.
-- The owner switches between them like this:
-  `git fetch && git checkout copilot && git pull && bash stage2/tt_android_stage2.sh`
-  (`git checkout main` to go back).
-- Switching branches is safe: each build re-applies that branch's SDK changes to fresh
-  sources (see above).
+### Branches
+- **`main`** is the only branch. The earlier `copilot` branch was merged and removed.
 
 ### Repo layout
 ```
@@ -89,7 +81,6 @@ stage2/
     Settings.java              settings → env vars / cvars; describe() for logs
     GameActivity.java          sets TT_* env vars, writes sessions.txt, archives runs
     LogExporter.java, ThreadMonitor.java, DriverManager.java, GameFiles.java
-tools/pixel_crt.py      unrelated photo filter
 tools/use_version.sh    switch to an earlier build by number
 Install-Table-Tennis.cmd + tools/installer/install.ps1   Windows installer (WSL check, ISO picker,
                         root apt install, clone/pull, stage 1 + 2, opens Downloads)

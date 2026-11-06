@@ -1,3 +1,8 @@
+// Based on src/android_gpu_driver.cpp from the MCLA Android port
+// (https://github.com/gabrielbskk/mcla-recomp-android-g), GPL-3.0-only.
+// Modified in 2026 for black-mesa-tennis: loads user-imported AdrenoTools driver packages.
+// Distributed under the GPL-3.0; see LICENSE and NOTICE.md.
+
 #if defined(__ANDROID__)
 
 #include <adrenotools/driver.h>

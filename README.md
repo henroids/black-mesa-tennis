@@ -17,9 +17,14 @@
 > build**: it contains data from your copy of the game. This project doesn't support piracy in
 > any form.
 
+> [!NOTE]
+> **Upfront: I didn't write this. Claude, Anthropic's AI, did.** Nearly all of the code here was
+> written by AI. See [How this was made](#how-this-was-made) for exactly who did what.
+
 ---
 
 ## Contents
+- [How this was made](#how-this-was-made)
 - [Status](#status)
 - [What you need](#what-you-need)
 - [Building the APK](#building-the-apk)
@@ -31,6 +36,48 @@
 - [Reporting problems](#reporting-problems)
 - [Repository layout](#repository-layout)
 - [Credits and license](#credits-and-license)
+
+## How this was made
+
+This project was built with AI, and I want to be completely clear about that.
+
+**I'm not a programmer.** Nearly all of the code in this repository was written by
+[Claude](https://www.anthropic.com/claude), an AI model made by Anthropic. Over about a week
+(late October to early November 2026) Claude went from an empty repository to build v83, across
+more than 90 commits. Every one of those commits is authored by Claude, so the history shows
+exactly what it wrote and when.
+
+### What Claude did
+- **Wrote the code:** the stage 1 and stage 2 build scripts, the Windows installer, the patches
+  that make the ReXGlue SDK run on Android's Vulkan drivers, the game-specific patches (such as
+  turning off the game's MSAA and calming its GPU-wait loop), and the whole Android app, including
+  the launcher, settings, driver import, log export and thread monitor.
+- **Did the performance work:** added the profiler and frame-time logging, read the logs I sent
+  back, worked out where the bottlenecks were, and took the port from about 20 FPS in rallies to
+  about 44.
+- **Did the research:** read the upstream projects (the PC recompilation, ReXGlue, and the MCLA
+  Android port) to work out how to combine them, and tracked down known upstream issues.
+- **Wrote the docs:** this README, [docs/BUILDING.md](docs/BUILDING.md),
+  [HANDOFF.md](HANDOFF.md), and the licensing notices.
+
+### What I did
+- **Had the idea and set the direction:** porting the PC recompilation to Android so it runs
+  natively on my AYN Thor, plus what the app should do and what was worth chasing.
+- **Ran every build and tested every one on real hardware.** Claude can't run the Android
+  toolchain or touch a device, so every build was compiled on my PC from my own disc image and
+  played on my Thor. Nothing here was verified any other way.
+- **Reported back:** after each build I sent the logs, screenshots and FPS numbers, and described
+  what looked or felt wrong.
+- **Made the calls:** the look of the app and its logo, which settings to keep or drop, and the
+  trade-offs. For example, I chose to keep the original visuals and shadows instead of trading
+  them for frame rate.
+- **Decide what ships.** I own the repository and choose what goes in it.
+
+### What that means for you
+- The code wasn't written or reviewed by an experienced developer, so expect rough edges and
+  read it with that in mind. Issues and fixes are welcome; I'll keep feeding them back to Claude.
+- The real heavy lifting was done by the people credited [below](#credits-and-license). This
+  port stands on their recompilation, SDK and Android work.
 
 ## Status
 
@@ -194,11 +241,10 @@ Please don't attach ISOs, APKs or other game files.
 | `stage2/` | Builds the APK: emulator fixes (`native/`), the Android app and launcher (`app/`) |
 | `Install-Table-Tennis.cmd`, `tools/installer/` | Windows installer: your ISO in, APK out |
 | `tools/use_version.sh` | Switch to an earlier build (`bash tools/use_version.sh 61`) |
-| `tools/pixel_crt.py` | Unrelated helper (photo filter) |
 | `assets/` | Images for this README (original artwork, no game assets) |
 | `docs/BUILDING.md` | Detailed build steps, updating, troubleshooting |
 | `HANDOFF.md` | Developer notes: every change, what it measured, current bottleneck |
-| `NOTICE.md`, `LICENSE` | Credits and licenses |
+| `NOTICE.md`, `LICENSE`, `licenses/` | Credits, license, and third-party license texts |
 
 ## Credits and license
 
