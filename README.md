@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" width="128" alt="black-mesa-tennis icon (pixel table-tennis paddle)">
+  <img src="assets/icon.png" width="128" alt="Black Mesa Tennis logo: two dot-grid table-tennis paddles, grey and red">
 </p>
 
 <h1 align="center">black-mesa-tennis</h1>

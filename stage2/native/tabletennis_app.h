@@ -49,77 +49,78 @@ void TtStartProfiler();  // tt_profiler.cpp
 void TtSetGuestTranslator(const uint8_t* (*translate)(uint32_t));
 inline rex::memory::Memory* g_tt_memory = nullptr;
 
-// Black Mesa Tennis logo (cross-stitch paddles), drawn faint behind the loading text in the
-// start screen's style. One character per stitch: w = white, r = red, . = empty. Each stitch
-// is a 5x5-pixel X drawn as whole-pixel rectangles so it stays sharp. 20% brightness, the
-// same as the start screen's menu_logo.png.
+// Black Mesa Tennis logo (dot-grid paddles: grey and red, white handles), drawn faint behind
+// the loading text in the start screen's style. One character per dot, 7 colours (see Colour);
+// '.' = empty. Each dot is a 4x4-pixel round dot on a 6-pixel pitch, drawn as whole-pixel
+// rectangles so it stays sharp. 20% brightness, the same as the start screen's menu_logo.png.
 inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
-  static const char* const kStitches[] = {
-      "...................................rrrrrrr..........",
-      ".........wwwwwwwww..............rrrrrrrrrrr.........",
-      "......wwwwwwwwwwwwww..........rrrrrrrrrrrrrrrr......",
-      ".....wwwwwwwwwwwwwwwww.......rrrrrrrrrrrrrrrrrr.....",
-      "....wwwwwwwwwwwwwwwwwww....rrrrrrrrrrrrrrrrrrrrr....",
-      "...wwwwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrr...",
-      "..wwwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrr..",
-      "..wwwwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrr..",
-      ".wwwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      ".wwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      "wwwwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      "wwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      "wwwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
-      "wwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
-      "wwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
-      "wwwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
-      "wwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      "wwwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      ".wwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      ".wwwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.",
-      "..wwwwwwwwwwwwwwwwww.rrrrrrrrrrrrrrrrrrrrrrrrrrrrr..",
-      "..wwwwwwwwwwwwwwwwww..rrrrrrrrrrrrrrrrrrrrrrrrrrrr..",
-      "..wwwwwwwwwwwwwwwwww...rrrrrrrrrrrrrrrrrrrrrrrrrr...",
-      "...wwwwwwwwwwwwwwwwww.w..rrrrrrrrrrrrrrrrrrrrrrrr...",
-      "....wwwwwwwwwwwwwwwwww.ww..rrrrrrrrrrrrrrrrrrrrr....",
-      "....wwwwwwwwwwwwwwwwww.www..rrrrrrrrrrrrrrrrrrrr....",
-      ".....wwwwwwwwwwwwwwww...wwww..rrrrrrrrrrrrrrrrr.....",
-      "......wwwwwwwwwwwww..ww.wwwwww..rrrrrrrrrrrrrr......",
-      ".......wwwwwwwwwww..ww..wwwwwwww..rrrrrrrrrrr.......",
-      "........wwwwwwww..wwww.wwwwwwwwwww.rrrrrrrrr........",
-      "..........wwwww.wwwwwwwwwwwwwwwwwww.rrrrrr..........",
-      "................w..ww..wwwwwwwww....................",
-      "......................w..wwwww......................",
-      ".....................ww...wwww......................",
-      "....................ww...www.ww.....................",
-      "....................w....ww...w.....................",
-      "...................ww...www....w....................",
-      "...................w....ww.w...w....................",
-      "..................w....ww..ww...w...................",
-      ".................ww...www.www....w..................",
-      "................ww....www..ww....w..................",
-      "................ww...www...www....w.................",
-      "...............wwwwwwww.....www..www................",
-      "...............wwwwwwww.....wwwwwwww................",
-      "...............wwwwwww.......wwwwwww................",
-      "................wwwwww........wwwwww................",
-      ".................wwww.........wwww.................."
-,
+  static const char* const kDots[] = {
+      ".........ddddd...............RRRRRR........",
+      ".......ggggggggg..........RRrrrrrrrrRR.....",
+      "....dgggggggggggggd......rrrrrrrrrrrrrR....",
+      "...dgggggggggggggggd...Rrrrrrrrrrrrrrrrr...",
+      "..dgggggggggggggggggG.RrrrrrrrrrrrrrrrrrR..",
+      "..ggggggggggggggggggGRrrrrrrrrrrrrrrrrrrrR.",
+      "..gggggggggggggggggGRrrrrrrrrrrrrrrrrrrrrr.",
+      ".ggggggggggggggggggrrrrrrrrrrrrrrrrrrrrrrr.",
+      ".ggggggggggggggggggrrrrrrrrrrrrrrrrrrrrrrrr",
+      "Ggggggggggggggggggrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "Ggggggggggggggggggrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "Gggggggggggggggggrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "GgggggggggggggggGRrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "GgggggggggggggggGRrrrrrrrrrrrrrrrrrrrrrrrrr",
+      ".gggggggggggggggGRrrrrrrrrrrrrrrrrrrrrrrrrr",
+      ".gggggggggggggggGRrrrrrrrrrrrrrrrrrrrrrrrrR",
+      ".gggggggggggggggGRrrrrrrrrrrrrrrrrrrrrrrrrR",
+      "..gggggggggggggggrrrrrrrrrrrrrrrrrrrrrrrrr.",
+      "..gggggggggggggggddrrrrrrrrrrrrrrrrrrrrrrR.",
+      "...gggggggggggggggdlrRrrrrrrrrrrrrrrrrrrR..",
+      "...gggggggggggggggdlwwRrrrrrrrrrrrrrrrrr...",
+      "....ggggggggggggggGGwwwrrrrrrrrrrrrrrrrR...",
+      "....dggggggggggggdGdwwwwwrRrrrrrrrrrrrR....",
+      ".....dggggggggggdlwdwwwwwwwRrrrrrrrrrR.....",
+      ".......ggggggGGgwwldwwwwwwwwrRrrrrrrR......",
+      ".........gggdGdwwwwwwwwwwwwww.RRrr.........",
+      ".............ddd..Gwwwwwww.................",
+      "..................l..wwwg..................",
+      "..................l..wwwdg.................",
+      ".................l...wwd.l.................",
+      "................l....wg...l................",
+      "................l...wggg..gg...............",
+      "...............l...lwlgw...ld..............",
+      "..............ld...wl.gwl..dl..............",
+      "..............w...ww...lw...l..............",
+      ".............wwwwwww....wl..lw.............",
+      ".............wwwwww.....lwwwww.............",
+      "..............wwww.......wwwwwd............",
+      "...............ww.........wwwd.............",
+      "..........................GG...............",
   };
-  constexpr int kRows = sizeof(kStitches) / sizeof(kStitches[0]);
-  constexpr int kCols = 52, kCell = 5;
-  // Pixel runs of one 5x5 X, row by row: {row, first x, end x}.
-  static const int kRuns[][3] = {{0, 0, 1}, {0, 4, 5}, {1, 0, 2}, {1, 3, 5}, {2, 1, 4},
-                                 {3, 0, 2}, {3, 3, 5}, {4, 0, 1}, {4, 4, 5}};
-  const ImU32 white = IM_COL32(48, 48, 48, 255), red = IM_COL32(43, 8, 8, 255);
-  const float left = std::floor(centre.x - kCols * kCell / 2.0f);
-  const float top = std::floor(centre.y - kRows * kCell / 2.0f);
+  constexpr int kRows = sizeof(kDots) / sizeof(kDots[0]);
+  constexpr int kCols = 43, kPitch = 6;
+  // One 4x4 round dot, row by row: {row, first x, end x}.
+  static const int kRuns[][3] = {{0, 1, 3}, {1, 0, 4}, {2, 0, 4}, {3, 1, 3}};
+  auto colour = [](char v) -> ImU32 {
+    switch (v) {
+      case 'r': return IM_COL32(38, 0, 1, 255);
+      case 'R': return IM_COL32(18, 0, 0, 255);
+      case 'g': return IM_COL32(28, 28, 27, 255);
+      case 'G': return IM_COL32(18, 18, 17, 255);
+      case 'd': return IM_COL32(8, 8, 7, 255);
+      case 'w': return IM_COL32(50, 50, 50, 255);
+      case 'l': return IM_COL32(40, 40, 40, 255);
+      default: return 0;
+    }
+  };
+  const float left = std::floor(centre.x - kCols * kPitch / 2.0f);
+  const float top = std::floor(centre.y - kRows * kPitch / 2.0f);
   for (int r = 0; r < kRows; r++) {
     for (int c = 0; c < kCols; c++) {
-      const char v = kStitches[r][c];
-      if (v == '.') continue;
-      const float x = left + c * kCell, y = top + r * kCell;
+      const ImU32 col = colour(kDots[r][c]);
+      if (!col) continue;
+      const float x = left + c * kPitch + 1, y = top + r * kPitch + 1;
       for (const auto& run : kRuns) {
-        draw->AddRectFilled(ImVec2(x + run[1], y + run[0]), ImVec2(x + run[2], y + run[0] + 1),
-                            v == 'r' ? red : white);
+        draw->AddRectFilled(ImVec2(x + run[1], y + run[0]), ImVec2(x + run[2], y + run[0] + 1), col);
       }
     }
   }
