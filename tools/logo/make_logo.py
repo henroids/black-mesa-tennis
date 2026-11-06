@@ -49,14 +49,19 @@ def on_square(logo, side, fill_frac, bg):
 hi = render(48, 32)  # master, same proportions as the source (dot 8 / pitch 12)
 # README icon: black square, logo filling ~80%
 on_square(hi, 384, 0.80, (0, 0, 0, 255)).save(f'{REPO}/assets/icon.png')
-# App icon, square: legacy icon and the adaptive foreground (logo fills ~90% of the visible 72/108 square),
-# 30% brighter than the source colours (owner)
-ICON_BRIGHT = 1.3
-hi = render(48, 32, ICON_BRIGHT)
+# App icon, square: made from its own artwork, assets/app_icon_logo.png (owner: bigger dots,
+# used as is), next to the logo source. Legacy icon: logo fills ~88% of the square; adaptive
+# foreground: ~60% of the canvas, i.e. ~90% of the visible 72/108 square.
+icon_src = Image.open(SRC.replace('logo.png', 'app_icon_logo.png')).convert('RGBA')
+ia = np.array(icon_src)
+ys, xs = np.nonzero(ia[:, :, :3].astype(int).sum(2) > 30)
+icon_logo = icon_src.crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
+icon_logo.putalpha(Image.fromarray(((ia[ys.min():ys.max() + 1, xs.min():xs.max() + 1, :3]
+                                     .astype(int).sum(2) > 0) * 255).astype('uint8')))
 for dpi, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}.items():
-    on_square(hi, s, 0.88, (0, 0, 0, 255)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
+    on_square(icon_logo, s, 0.88, (0, 0, 0, 255)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
     fg = s * 108 // 48
-    on_square(hi, fg, 0.60, (0, 0, 0, 0)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_foreground.png')
+    on_square(icon_logo, fg, 0.60, (0, 0, 0, 0)).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_foreground.png')
 FAINT = 0.4  # brightness of the faint start-screen / loading-screen logo
 # Start screen: faint logo at its own pixel size, pitch 6 / dot 4, pixel-exact dots
 DOT4 = ['.##.', '####', '####', '.##.']
