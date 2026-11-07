@@ -2,7 +2,7 @@ Images used by the project README. Original artwork only. No game assets, logos 
 screenshots are stored in this repository.
 
 - `logo.png`: the project logo (two dot-grid table-tennis paddles), the source for every icon.
-- `app_icon_logo.png`: the app icon's version of the logo (bigger dots), used only for the app icon.
+- `app_icon_logo.png`: the app icon's version of the logo (square dots on a tiled background), used only for the app icon.
 - `icon.png`: the README icon, made from `logo.png`.
 
 `tools/logo/make_logo.py` rebuilds every logo asset (README icon and the faint start-screen
