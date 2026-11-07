@@ -38,17 +38,17 @@ def render(pitch, dot, scale=1.0, size=None, ss=4, bg=(0, 0, 0, 255)):
     img = big.resize((w, h), Image.LANCZOS)
     return img
 
-def on_square(logo, side, fill_frac, bg):
+def on_square(logo, side, fill_frac, bg, dy=0):
     canvas = Image.new('RGBA', (side, side), bg)
     lw = round(side * fill_frac)
     lh = round(lw * logo.height / logo.width)
     lg = logo.resize((lw, lh), Image.LANCZOS)
-    canvas.alpha_composite(lg, ((side - lw) // 2, (side - lh) // 2))
+    canvas.alpha_composite(lg, ((side - lw) // 2, (side - lh) // 2 + dy))
     return canvas
 
 hi = render(48, 32)  # master, same proportions as the source (dot 8 / pitch 12)
 # README icon: round (black disc, transparent outside), logo sized to fit inside the circle
-readme = on_square(hi, 384 * 4, 0.70, (0, 0, 0, 255))
+readme = on_square(hi, 384 * 4, 0.70, (0, 0, 0, 255), dy=10 * 4)  # 10 px lower: looks balanced (owner)
 disc = Image.new('L', readme.size, 0)
 ImageDraw.Draw(disc).ellipse([0, 0, readme.width - 1, readme.height - 1], fill=255)
 readme.putalpha(disc)
