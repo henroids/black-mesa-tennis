@@ -52,7 +52,25 @@ readme = on_square(hi, 384 * 4, 0.70, (0, 0, 0, 255))
 disc = Image.new('L', readme.size, 0)
 ImageDraw.Draw(disc).ellipse([0, 0, readme.width - 1, readme.height - 1], fill=255)
 readme.putalpha(disc)
-readme.resize((384, 384), Image.LANCZOS).save(f'{REPO}/assets/icon_round.png')
+readme = readme.resize((384, 384), Image.LANCZOS)
+# Border: 3 rows of dots in the handles' white, the logo's own dot size and spacing, out to
+# the edge; neighbouring rows offset by half a dot so they interlock.
+import math
+S, SS = 384, 8
+pitch = 0.70 * S / COLS
+dot = pitch * 32 / 48
+border = Image.new('RGBA', (S * SS, S * SS), (0, 0, 0, 0))
+bd = ImageDraw.Draw(border)
+for j in range(3):
+    r = S / 2 - dot / 2 - j * pitch
+    n = round(2 * math.pi * r / pitch)
+    for i in range(n):
+        a = 2 * math.pi * (i + 0.5 * (j % 2)) / n
+        x, y = S / 2 + r * math.cos(a), S / 2 + r * math.sin(a)
+        bd.ellipse([(x - dot / 2) * SS, (y - dot / 2) * SS, (x + dot / 2) * SS, (y + dot / 2) * SS],
+                   fill=PALETTE['w'] + (255,))
+readme.alpha_composite(border.resize((S, S), Image.LANCZOS))
+readme.save(f'{REPO}/assets/icon_round.png')
 # App icon, square: made from its own artwork, assets/app_icon_logo.png (owner), used as is,
 # including its tiled background (extended with the same 12-px tile where a crop needs more).
 # Sized so the whole logo fits inside a circle, for launchers that make icons round: legacy
