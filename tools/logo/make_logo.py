@@ -47,8 +47,12 @@ def on_square(logo, side, fill_frac, bg):
     return canvas
 
 hi = render(48, 32)  # master, same proportions as the source (dot 8 / pitch 12)
-# README icon: black square, logo filling ~80%
-on_square(hi, 384, 0.80, (0, 0, 0, 255)).save(f'{REPO}/assets/icon.png')
+# README icon: round (black disc, transparent outside), logo sized to fit inside the circle
+readme = on_square(hi, 384 * 4, 0.70, (0, 0, 0, 255))
+disc = Image.new('L', readme.size, 0)
+ImageDraw.Draw(disc).ellipse([0, 0, readme.width - 1, readme.height - 1], fill=255)
+readme.putalpha(disc)
+readme.resize((384, 384), Image.LANCZOS).save(f'{REPO}/assets/icon.png')
 # App icon, square: made from its own artwork, assets/app_icon_logo.png (owner), used as is,
 # including its tiled background (extended with the same 12-px tile where a crop needs more).
 # Sized so the whole logo fits inside a circle, for launchers that make icons round: legacy
