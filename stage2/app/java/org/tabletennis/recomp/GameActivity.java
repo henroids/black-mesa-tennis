@@ -88,6 +88,13 @@ public final class GameActivity extends SDLActivity {
 
     private ThreadMonitor monitor;
 
+    /** SDL asks for "any orientation" when the game window opens, which allowed portrait (and
+     *  a flicker and stutter while the screen turned). Always landscape, either way up. */
+    @Override
+    public void setOrientationBis(int w, int h, boolean resizable, String hint) {
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
     /** 40 FPS only looks even on a 120 Hz screen (each frame shown for exactly 3 refreshes), so
      *  ask for the screen's 120 Hz mode then; 30 and 60 FPS get a 60 Hz mode. Logged either way. */
     private void chooseScreenRefresh(int fps) {

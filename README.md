@@ -102,7 +102,17 @@ at 99% at its top clock). The realistic route to 60 would be a native renderer i
 GPU emulation, a much bigger project; see [HANDOFF.md](HANDOFF.md) for that and for the full
 history of what was tried and measured.
 
-Other Android devices with a recent Adreno GPU may work but haven't been tested.
+### Tested devices
+
+| Device | Chip | Result | Notes |
+|---|---|---|---|
+| **AYN Thor** | Snapdragon 8 Gen 2 (Adreno 740) | Plays well, ~43–46 FPS in rallies | Reference device; active cooling keeps it at full speed |
+| **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Plays fine, slower than the Thor | ~45 FPS at first, then ~30–35 once the phone warms up: after ~8 minutes it lowers its CPU clock (2.8 → 1.2 GHz) to stay cool. Some menu flicker. Needs a controller. Try **40 FPS** or **30 FPS** for steadier play, and Game Enhancer's performance mode |
+| Xiaomi Mi Mix 3 | Snapdragon 845 (Adreno 630) | Not tested | Installs (Android 10), but much less powerful; expect it to be too slow |
+
+Same settings on both tested devices: 720p, Turnip Gen8 V38, Hidden passes Skipped. Other Android
+devices with a recent Adreno GPU may work; reports are welcome (see
+[Reporting problems](#reporting-problems)).
 
 ## What you need
 
