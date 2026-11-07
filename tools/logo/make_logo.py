@@ -50,10 +50,18 @@ hi = render(48, 32)  # master, same proportions as the source (dot 8 / pitch 12)
 # README icon: black square, logo filling ~80%
 on_square(hi, 384, 0.80, (0, 0, 0, 255)).save(f'{REPO}/assets/icon.png')
 # App icon, square: made from its own artwork, assets/app_icon_logo.png (owner), used as is,
-# including its tiled background. Legacy icon: a square crop where the logo fills ~88%;
-# adaptive foreground: a full-bleed crop where the logo fills ~60% of the canvas, i.e. ~90% of
-# the visible 72/108 square. The themed (monochrome) icon is the logo's shape alone.
-icon_src = Image.open(SRC.replace('logo.png', 'app_icon_logo.png')).convert('RGBA')
+# including its tiled background (extended with the same 12-px tile where a crop needs more).
+# Sized so the whole logo fits inside a circle, for launchers that make icons round: legacy
+# icon, logo ~72% of the square; adaptive foreground, logo ~44% of the canvas, so its box
+# fits the 66/108 safe circle. The themed (monochrome) icon is the logo's shape alone.
+art = Image.open(SRC.replace('logo.png', 'app_icon_logo.png')).convert('RGBA')
+PAD = 240  # multiple of the 12-px tile, so the extended background lines up
+icon_src = Image.new('RGBA', (art.width + 2 * PAD, art.height + 2 * PAD))
+tile = art.crop((0, 0, 12, 12))
+for ty in range(0, icon_src.height, 12):
+    for tx in range(0, icon_src.width, 12):
+        icon_src.paste(tile, (tx, ty))
+icon_src.paste(art, (PAD, PAD))
 ia = np.array(icon_src)
 lum = ia[:, :, :3].astype(int).sum(2)
 ys, xs = np.nonzero(lum > 120)  # logo dots; the background tiles stay below this
@@ -67,10 +75,10 @@ def icon_crop(fill_frac, side):
 mono = Image.fromarray(np.dstack([np.full(lum.shape, 255, 'uint8')] * 3 +
                                  [((lum > 120) * 255).astype('uint8')]), 'RGBA')
 for dpi, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}.items():
-    icon_crop(0.88, s).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
+    icon_crop(0.72, s).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher.png')
     fg = s * 108 // 48
-    icon_crop(0.60, fg).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_foreground.png')
-    half = lw / 0.60 / 2
+    icon_crop(0.44, fg).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_foreground.png')
+    half = lw / 0.44 / 2
     mono.crop(tuple(round(v) for v in (cx - half, cy - half, cx + half, cy + half))).resize(
         (fg, fg), Image.LANCZOS).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_monochrome.png')
 FAINT = 0.4  # brightness of the faint start-screen / loading-screen logo
