@@ -52,7 +52,7 @@ readme = on_square(hi, 384 * 4, 0.70, (0, 0, 0, 255))
 disc = Image.new('L', readme.size, 0)
 ImageDraw.Draw(disc).ellipse([0, 0, readme.width - 1, readme.height - 1], fill=255)
 readme.putalpha(disc)
-readme.resize((384, 384), Image.LANCZOS).save(f'{REPO}/assets/icon.png')
+readme.resize((384, 384), Image.LANCZOS).save(f'{REPO}/assets/icon_round.png')
 # App icon, square: made from its own artwork, assets/app_icon_logo.png (owner), used as is,
 # including its tiled background (extended with the same 12-px tile where a crop needs more).
 # Sized so the whole logo fits inside a circle, for launchers that make icons round: legacy
