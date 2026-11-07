@@ -63,6 +63,8 @@ for ty in range(0, icon_src.height, 12):
         icon_src.paste(tile, (tx, ty))
 icon_src.paste(art, (PAD, PAD))
 ia = np.array(icon_src)
+ICON_BRIGHT = 0.8  # owner: app icon 20% darker than the artwork
+icon_src = Image.fromarray(np.dstack([(ia[:, :, :3] * ICON_BRIGHT).astype('uint8'), ia[:, :, 3:]]), 'RGBA')
 lum = ia[:, :, :3].astype(int).sum(2)
 ys, xs = np.nonzero(lum > 120)  # logo dots; the background tiles stay below this
 cx, cy, lw = (xs.min() + xs.max() + 1) / 2, (ys.min() + ys.max() + 1) / 2, xs.max() + 1 - xs.min()
