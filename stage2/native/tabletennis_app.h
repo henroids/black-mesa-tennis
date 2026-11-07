@@ -49,10 +49,13 @@ void TtStartProfiler();  // tt_profiler.cpp
 void TtSetGuestTranslator(const uint8_t* (*translate)(uint32_t));
 inline rex::memory::Memory* g_tt_memory = nullptr;
 
-// Black Mesa Tennis logo (dot-grid paddles: grey and red, white handles), drawn faint behind
-// the loading text in the start screen's style. One character per dot, 7 colours (see Colour);
-// '.' = empty. Each dot is a 4x4-pixel round dot on a 6-pixel pitch, drawn as whole-pixel
-// rectangles so it stays sharp. 40% brightness, the same as the start screen's menu_logo.png.
+// Black Mesa Tennis logo, the same round badge as the start screen's menu_logo.png and the
+// README icon (tools/logo/make_logo.py): dot-grid paddles (grey and red, white handles) on a
+// 6-pixel dot pitch, moved down 10/384 of the badge, inside a 3-row dotted border whose dots
+// are the handles' white, 10% darker. One character per paddle dot, 7 colours (see colour);
+// '.' = empty. Paddle dots are 4x4-pixel round dots drawn as whole-pixel rectangles so they
+// stay sharp; the border dots sit on circles, so they are drawn as small filled circles.
+// 40% brightness, drawn faint behind the loading text.
 inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
   static const char* const kDots[] = {
       ".........ddddd...............RRRRRR........",
@@ -112,8 +115,20 @@ inline void TtDrawLoadingLogo(ImDrawList* draw, ImVec2 centre) {
       default: return 0;
     }
   };
+  constexpr float kBadge = kCols * kPitch / 0.70f;  // the paddles fill 70% of the badge
+  constexpr float kDot = 4.0f;
+  const ImU32 ring = IM_COL32(90, 90, 90, 255);  // 252 * 0.9 (border) * 0.4 (faint)
+  for (int j = 0; j < 3; j++) {
+    const float rad = kBadge / 2 - kDot / 2 - j * kPitch;
+    const int n = static_cast<int>(std::lround(2 * 3.14159265f * rad / kPitch));
+    for (int i = 0; i < n; i++) {
+      const float a = 2 * 3.14159265f * (i + 0.5f * (j % 2)) / n;
+      draw->AddCircleFilled(ImVec2(centre.x + rad * std::cos(a), centre.y + rad * std::sin(a)),
+                            kDot / 2, ring, 8);
+    }
+  }
   const float left = std::floor(centre.x - kCols * kPitch / 2.0f);
-  const float top = std::floor(centre.y - kRows * kPitch / 2.0f);
+  const float top = std::floor(centre.y - kRows * kPitch / 2.0f + kBadge * 10.0f / 384.0f);
   for (int r = 0; r < kRows; r++) {
     for (int c = 0; c < kCols; c++) {
       const ImU32 col = colour(kDots[r][c]);

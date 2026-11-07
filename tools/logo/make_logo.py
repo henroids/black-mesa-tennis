@@ -47,30 +47,43 @@ def on_square(logo, side, fill_frac, bg, dy=0):
     return canvas
 
 hi = render(48, 32)  # master, same proportions as the source (dot 8 / pitch 12)
-# README icon: round (black disc, transparent outside), logo sized to fit inside the circle
-readme = on_square(hi, 384 * 4, 0.70, (0, 0, 0, 255), dy=10 * 4)  # 10 px lower: looks balanced (owner)
-disc = Image.new('L', readme.size, 0)
-ImageDraw.Draw(disc).ellipse([0, 0, readme.width - 1, readme.height - 1], fill=255)
-readme.putalpha(disc)
-readme = readme.resize((384, 384), Image.LANCZOS)
-# Border: 3 rows of dots in the handles' white, the logo's own dot size and spacing, out to
-# the edge; neighbouring rows offset by half a dot so they interlock.
 import math
-S, SS = 384, 8
-pitch = 0.70 * S / COLS
-dot = pitch * 32 / 48
-border = Image.new('RGBA', (S * SS, S * SS), (0, 0, 0, 0))
-bd = ImageDraw.Draw(border)
-for j in range(3):
-    r = S / 2 - dot / 2 - j * pitch
-    n = round(2 * math.pi * r / pitch)
-    for i in range(n):
-        a = 2 * math.pi * (i + 0.5 * (j % 2)) / n
-        x, y = S / 2 + r * math.cos(a), S / 2 + r * math.sin(a)
-        bd.ellipse([(x - dot / 2) * SS, (y - dot / 2) * SS, (x + dot / 2) * SS, (y + dot / 2) * SS],
-                   fill=PALETTE['w'] + (255,))
-readme.alpha_composite(border.resize((S, S), Image.LANCZOS))
-readme.save(f'{REPO}/assets/icon_round.png')
+BADGE_FILL = 0.70     # the paddles' width as a share of the round logo's diameter
+BADGE_DROP = 10 / 384  # paddles moved down by this share of the diameter: looks balanced (owner)
+BORDER = 0.9          # border dots: the handles' white, 10% darker (owner)
+
+
+def round_logo(S, brightness=1.0, SS=8):
+    """The project logo: the paddles on a black disc with a 3-row dotted border out to the edge
+    (the logo's own dot size and spacing, neighbouring rows offset by half a dot so they
+    interlock); transparent outside the disc."""
+    big = Image.new('RGBA', (S * SS, S * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(big)
+    d.ellipse([0, 0, S * SS - 1, S * SS - 1], fill=(0, 0, 0, 255))
+    pitch = BADGE_FILL * S / COLS
+    dot = pitch * 32 / 48
+    off = (pitch - dot) / 2
+    left = (S - COLS * pitch) / 2
+    top = (S - ROWS * pitch) / 2 + BADGE_DROP * S
+    for r, row in enumerate(grid):
+        for c, ch in enumerate(row):
+            if ch == '.': continue
+            col = tuple(min(255, int(v * brightness)) for v in PALETTE[ch]) + (255,)
+            x, y = (left + c * pitch + off) * SS, (top + r * pitch + off) * SS
+            d.ellipse([x, y, x + dot * SS - 1, y + dot * SS - 1], fill=col)
+    ring = tuple(int(v * BORDER * brightness) for v in PALETTE['w']) + (255,)
+    for j in range(3):
+        rad = S / 2 - dot / 2 - j * pitch
+        n = round(2 * math.pi * rad / pitch)
+        for i in range(n):
+            a = 2 * math.pi * (i + 0.5 * (j % 2)) / n
+            x, y = S / 2 + rad * math.cos(a), S / 2 + rad * math.sin(a)
+            d.ellipse([(x - dot / 2) * SS, (y - dot / 2) * SS, (x + dot / 2) * SS, (y + dot / 2) * SS], fill=ring)
+    return big.resize((S, S), Image.LANCZOS)
+
+
+# README icon
+round_logo(384).save(f'{REPO}/assets/icon_round.png')
 # App icon, square: made from its own artwork, assets/app_icon_logo.png (owner), used as is,
 # including its tiled background (extended with the same 12-px tile where a crop needs more).
 # Sized so the whole logo fits inside a circle, for launchers that make icons round: legacy
@@ -106,19 +119,9 @@ for dpi, s in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 19
     mono.crop(tuple(round(v) for v in (cx - half, cy - half, cx + half, cy + half))).resize(
         (fg, fg), Image.LANCZOS).save(f'{REPO}/stage2/app/res/mipmap-{dpi}/ic_launcher_monochrome.png')
 FAINT = 0.4  # brightness of the faint start-screen / loading-screen logo
-# Start screen: faint logo at its own pixel size, pitch 6 / dot 4, pixel-exact dots
-DOT4 = ['.##.', '####', '####', '.##.']
-w, h = COLS * 6, ROWS * 6
-faint = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-px = faint.load()
-for r, row in enumerate(grid):
-    for c, ch in enumerate(row):
-        if ch == '.': continue
-        col = tuple(int(v * FAINT) for v in PALETTE[ch]) + (255,)
-        for yy, line in enumerate(DOT4):
-            for xx, m in enumerate(line):
-                if m == '#': px[c * 6 + 1 + xx, r * 6 + 1 + yy] = col
-faint.save(f'{REPO}/stage2/app/res/drawable-nodpi/menu_logo.png')
+# Start screen: the round logo, faint, drawn at its own pixel size behind the menu. Its paddles
+# are on a 6-px dot pitch, the same as the loading screen's copy (tabletennis_app.h).
+round_logo(round(6 * COLS / BADGE_FILL), FAINT).save(f'{REPO}/stage2/app/res/drawable-nodpi/menu_logo.png')
 open(f'{OUT}/grid.txt', 'w').write('\n'.join(grid) + '\n')
 hi.save(f'{OUT}/master.png')
 print('\n'.join(grid))
