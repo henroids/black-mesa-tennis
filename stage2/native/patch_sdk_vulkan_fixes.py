@@ -36,6 +36,8 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   F15 uploads recorded in front of the open render pass instead of cutting it (v84: render
       passes 256 -> 68 per frame, ~46 -> ~52 FPS). Off with TT_DRAW_ALL_PASSES.
       tt_work_stats [9] passes begun [10] uploads moved [11] uploads that cut the pass
+  F16 resolves of the two depth buffers F10 leaves empty are done 4 times, then skipped
+      (v87: 51.9 -> 55.5 FPS). Off with TT_DRAW_ALL_PASSES. tt_work_stats[13] counts them.
 """
 import re
 import sys
@@ -821,11 +823,10 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
 done.append("F15 uploads recorded in front of the open render pass")
 
 
-# ============================================================ TESTS (v87, temporary)
-# TT_TEST=skipres: F10 skips every draw into the 640- and 1120-wide depth buffers, but the game
+# ---- F16 (v87: 51.9 -> 55.5 FPS, ~7 MB less resolved per frame). F10 skips every draw into the 640- and 1120-wide depth buffers, but the game
 # still resolves those (now empty) buffers into textures every frame: 1120x704 and 640x480
 # depth, ~10 MB of the ~44 MB resolved per frame, each resolve being three passes over the
-# pixels. With skipres each such destination is resolved its first 4 times only.
+# pixels. With F16 each such destination is resolved its first 4 times only.
 edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  // Nothing to copy/clear.\n"
     "  if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {\n"
@@ -837,10 +838,8 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  }\n"
     "  if (resolve_info.copy_dest_extent_length && resolve_info.IsCopyingDepth() &&\n"
     "      (resolve_info.depth_edram_info.pitch_tiles == 8 ||\n"
-    "       resolve_info.depth_edram_info.pitch_tiles == 14)) {  // tt-android test (v87)\n"
-    "    static const char* const tt_test = std::getenv(\"TT_TEST\");\n"
-    "    static const bool tt_skip = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr && tt_test &&\n"
-    "                                !std::strcmp(tt_test, \"skipres\");\n"
+    "       resolve_info.depth_edram_info.pitch_tiles == 14)) {  // tt-android F16\n"
+    "    static const bool tt_skip = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
     "    static std::unordered_map<uint32_t, uint32_t> tt_resolves;\n"
     "    if (tt_skip && tt_resolves[resolve_info.copy_dest_base]++ >= 4) {\n"
     "      __atomic_fetch_add(&tt_work_stats[13], 1, __ATOMIC_RELAXED);\n"
@@ -849,6 +848,6 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  }\n"),
     prelude="extern \"C\" uint64_t tt_work_stats[16];\n",
     includes=("#include <cstdlib>", "#include <cstring>", "#include <unordered_map>"))
-done.append("TEST (v87) skipres")
+done.append("F16 resolves of the depth buffers F10 leaves empty skipped")
 
 print("\n".join(done))
