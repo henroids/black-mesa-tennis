@@ -45,6 +45,7 @@ final class ThreadMonitor extends Thread {
             line.append(time.format(new Date())).append("  ").append(cpuFreqs()).append("  ")
                     .append(temperature()).append("  ").append(gpuBusy()).append('\n');
             List<String[]> usage = new ArrayList<>();
+            double total = 0;
             File[] tasks = new File("/proc/self/task").listFiles();
             if (tasks != null) {
                 for (File t : tasks) {
@@ -60,6 +61,7 @@ final class ThreadMonitor extends Thread {
                     Long prev = lastTicks.put(key, ticks);
                     if (prev == null) continue;
                     double pct = (ticks - prev) * 100.0 / clockTicks / (INTERVAL_MS / 1000.0);
+                    total += pct;
                     if (pct >= 3) {
                         usage.add(new String[]{String.format(Locale.ROOT, "%5.0f%%", pct),
                                 name + " [cpu" + f[36] + "]"});
@@ -67,6 +69,8 @@ final class ThreadMonitor extends Thread {
                 }
             }
             usage.sort((a, b) -> b[0].compareTo(a[0]));
+            // Whole-app CPU load, so runs can be compared for strain as well as FPS.
+            line.insert(line.length() - 1, String.format(Locale.ROOT, "  CPU: %.0f %% of one core", total));
             for (int i = 0; i < Math.min(12, usage.size()); i++) {
                 line.append("   ").append(usage.get(i)[0]).append("  ").append(usage.get(i)[1]).append('\n');
             }

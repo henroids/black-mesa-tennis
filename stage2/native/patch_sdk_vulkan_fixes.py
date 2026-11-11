@@ -820,4 +820,100 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
 
 done.append("F15 uploads recorded in front of the open render pass")
 
+
+# ============================================================ TESTS (v86, temporary)
+# What do the ~31 resolves per frame cost? Each one is three passes over its pixels: render
+# target -> EDRAM buffer, EDRAM -> guest bytes in shared memory, guest bytes -> host texture.
+#   TT_TEST=freeze     the third step only on every 8th time (resolved textures update slowly)
+#   TT_TEST=noresolve  the copy part of a resolve only on every 8th time (all three steps)
+# Both break the picture on purpose; they only measure. Every distinct resolve and resolved
+# texture is also written to <logs>/resolves.txt, to design a direct copy from.
+TT_SHAPES = (
+    "// tt-android tests (v86): one line per distinct resolve / resolved texture.\n"
+    "static void TtShape(uint64_t id, const char* format, ...) {\n"
+    "  static std::unordered_set<uint64_t> seen;\n"
+    "  static FILE* file = nullptr;\n"
+    "  if (seen.size() >= 400 || !seen.insert(id).second) return;\n"
+    "  if (!file) {\n"
+    "    const char* dir = std::getenv(\"TT_PROFILE\");\n"
+    "    if (!dir) return;\n"
+    "    file = std::fopen((std::string(dir) + \"/resolves.txt\").c_str(), TT_SHAPES_MODE);\n"
+    "    if (!file) return;\n"
+    "  }\n"
+    "  va_list args;\n"
+    "  va_start(args, format);\n"
+    "  std::vfprintf(file, format, args);\n"
+    "  va_end(args);\n"
+    "  std::fflush(file);\n"
+    "}\n")
+TT_SHAPE_INCLUDES = ("#include <cstdarg>", "#include <cstdio>", "#include <cstdlib>",
+                     "#include <cstring>", "#include <string>", "#include <unordered_map>",
+                     "#include <unordered_set>")
+edit("src/graphics/vulkan/texture_cache.cpp", (
+    "    if (gpu_written) __atomic_fetch_add(&tt_tex_stats[2], 1, __ATOMIC_RELAXED);\n",
+    "    if (gpu_written) __atomic_fetch_add(&tt_tex_stats[2], 1, __ATOMIC_RELAXED);\n"
+    "    if (gpu_written) {  // tt-android test (v86)\n"
+    "      static const char* const tt_test = std::getenv(\"TT_TEST\");\n"
+    "      static std::unordered_map<const void*, uint32_t> tt_loads;\n"
+    "      const TextureKey k = texture.key();\n"
+    "      uint64_t id = 0;\n"
+    "      std::memcpy(&id, &k, sizeof(id));\n"
+    "      TtShape(id ^ (uint64_t(k.format) << 56),\n"
+    "              \"texture  page %05X  %ux%u  format %u endian %u tiled %u pitch %u mips %u dim %u \"\n"
+    "              \"signed %u  %u bytes\\n\",\n"
+    "              unsigned(k.base_page), unsigned(k.width_minus_1) + 1, unsigned(k.height_minus_1) + 1,\n"
+    "              unsigned(k.format), unsigned(k.endianness), unsigned(k.tiled), unsigned(k.pitch),\n"
+    "              unsigned(k.mip_max_level), unsigned(k.dimension), unsigned(k.signed_separate),\n"
+    "              unsigned(texture.GetGuestBaseSize()));\n"
+    "      if (tt_test && !std::strcmp(tt_test, \"freeze\") && (tt_loads[&texture]++ & 7) != 0) {\n"
+    "        return true;\n"
+    "      }\n"
+    "    }\n"),
+    prelude="#define TT_SHAPES_MODE \"a\"\n" + TT_SHAPES, includes=TT_SHAPE_INCLUDES)
+edit("src/graphics/vulkan/render_target_cache.cpp", (
+    "  // Nothing to copy/clear.\n"
+    "  if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {\n"
+    "    return true;\n"
+    "  }\n",
+    "  // Nothing to copy/clear.\n"
+    "  if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {\n"
+    "    return true;\n"
+    "  }\n"
+    "  if (resolve_info.copy_dest_extent_length) {  // tt-android test (v86)\n"
+    "    static const char* const tt_test = std::getenv(\"TT_TEST\");\n"
+    "    static std::unordered_map<uint32_t, uint32_t> tt_resolves;\n"
+    "    const auto& d = resolve_info.copy_dest_info;\n"
+    "    const auto& e = resolve_info.IsCopyingDepth() ? resolve_info.depth_edram_info\n"
+    "                                                  : resolve_info.color_edram_info;\n"
+    "    TtShape(uint64_t(resolve_info.copy_dest_base) ^ (uint64_t(d.value) << 32) ^\n"
+    "                (uint64_t(resolve_info.coordinate_info.packed) << 20) ^\n"
+    "                (uint64_t(resolve_info.height_div_8) << 50) ^ (uint64_t(e.packed) << 7),\n"
+    "            \"resolve  dest %08X (page %05X) +%u bytes  %ux%u  dest format %u endian %u swap %u \"\n"
+    "            \"bias %d array %u slice %u number %u  dest pitch/32 %u height/32 %u offset %u,%u  \"\n"
+    "            \"source %s pitch %u tiles, msaa %u, format %u, base tile %u, 64bpp %u  \"\n"
+    "            \"edram offset %u,%u  control %08X\\n\",\n"
+    "            resolve_info.copy_dest_base, resolve_info.copy_dest_base >> 12,\n"
+    "            resolve_info.copy_dest_extent_length,\n"
+    "            unsigned(resolve_info.coordinate_info.width_div_8) * 8, resolve_info.height_div_8 * 8,\n"
+    "            unsigned(d.copy_dest_format), unsigned(d.copy_dest_endian), unsigned(d.copy_dest_swap),\n"
+    "            int(d.copy_dest_exp_bias), unsigned(d.copy_dest_array), unsigned(d.copy_dest_slice),\n"
+    "            unsigned(d.copy_dest_number),\n"
+    "            unsigned(resolve_info.copy_dest_coordinate_info.pitch_aligned_div_32),\n"
+    "            unsigned(resolve_info.copy_dest_coordinate_info.height_aligned_div_32),\n"
+    "            unsigned(resolve_info.copy_dest_coordinate_info.offset_x_div_8) * 8,\n"
+    "            unsigned(resolve_info.copy_dest_coordinate_info.offset_y_div_8) * 8,\n"
+    "            resolve_info.IsCopyingDepth() ? \"depth\" : \"colour\", unsigned(e.pitch_tiles),\n"
+    "            unsigned(e.msaa_samples), unsigned(e.format), unsigned(e.base_tiles),\n"
+    "            unsigned(e.format_is_64bpp),\n"
+    "            unsigned(resolve_info.coordinate_info.edram_offset_x_div_8) * 8,\n"
+    "            unsigned(resolve_info.coordinate_info.edram_offset_y_div_8) * 8,\n"
+    "            resolve_info.rb_copy_control.value);\n"
+    "    if (tt_test && !std::strcmp(tt_test, \"noresolve\") &&\n"
+    "        (tt_resolves[resolve_info.copy_dest_base]++ & 7) != 0) {\n"
+    "      resolve_info.copy_dest_extent_length = 0;  // clears still happen\n"
+    "    }\n"
+    "  }\n"),
+    prelude="#define TT_SHAPES_MODE \"w\"\n" + TT_SHAPES, includes=TT_SHAPE_INCLUDES)
+done.append("TESTS (v86) freeze / noresolve, resolves.txt")
+
 print("\n".join(done))
