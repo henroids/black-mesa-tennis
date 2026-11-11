@@ -110,8 +110,7 @@ The owner exports a zip from the launcher. Key files:
 - `syms/`: symbol lists for host offsets.
 
 Env switches the native side still reads: `TT_PROFILE=<dir>`
-(launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). During the v84 round also
-`TT_TEST` (launcher Test row; remove with the row). All experiment switches
+(launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). All experiment switches
 were removed in v56; the history table below says what each experiment found.
 
 ## 5. History: what was done and what it did
@@ -176,7 +175,8 @@ were removed in v56; the history table below says what each experiment found.
 | **v81** | Made permanent: **F8** UI thread no longer waits for its paint (present waits GPU-side), **F14** repaint once per new game frame (presenter; overlay's 60 Hz cap removed), D4 counters. Test row: Less echo / Much less echo only | Owner picked **Much less echo** (rear 0.25) |
 | **v82** | Wrap-up: F13 rear channels fixed at 0.25; Test row and all test switches removed (no TT_TEST left). Final state: rallies ~43–45 FPS at 60, every frame shown; steady 40 at 120 Hz with much lower load | — |
 | **v83** | Start screen: self-playing vertical Pong in the empty strip left of the menu (`PongView.java`, ported from the owner's canvas Pong in github.com/henroids/not_portfolio `js/script.js`; both paddles computer-controlled, pixel grid, start-screen colours; runs only while the start screen is in front) | — |
-| **v84** | New optimisation round (goal: 60 FPS, less load). Source review found what earlier rounds missed: **the emulator ends and restarts the render pass for every upload** (`VulkanSharedMemory::UploadRanges` → `SubmitBarriers(true)`), ~310 times per frame, plus every texture load and resolve; render targets are 1280×2048 / 640×4096 and every pass covers all of it; a CPU write throws away up to 256 KB of GPU-buffer contents around it, so ~7 MB is re-uploaded per frame. Test row (`TT_TEST`): **Uploads before pass** (`hoist`, T1: an upload inside an open pass is recorded in front of the pass when no draw of that pass read those pages), **Memory watch 16 KB / 4 KB** (`watch16` / `watch4`, T2), **Crop pass area** (`area`, T3: pass area = union of its draws' scissors and clears), **No copies at all** (`nocopy`, T4: F12 without the empty pass and depth-store), **All four** (`all`), **All four + tiled GPU** (`allgmem`, also `TU_DEBUG=gmem`). New profile line: render passes per frame, uploads moved / could move / that cut the pass, memory-watch faults | **Not tested yet** |
+| **v84** | New optimisation round (goal: 60 FPS, less load). Source review found what earlier rounds missed: **the emulator ends and restarts the render pass for every upload** (`VulkanSharedMemory::UploadRanges` → `SubmitBarriers(true)`), ~310 times per frame, plus every texture load and resolve; render targets are 1280×2048 / 640×4096 and every pass covers all of it; a CPU write throws away up to 256 KB of GPU-buffer contents around it, so ~7 MB is re-uploaded per frame. Test row (`TT_TEST`): **Uploads before pass** (`hoist`, T1: an upload inside an open pass is recorded in front of the pass when no draw of that pass read those pages), **Memory watch 16 KB / 4 KB** (`watch16` / `watch4`, T2), **Crop pass area** (`area`, T3: pass area = union of its draws' scissors and clears), **No copies at all** (`nocopy`, T4: F12 without the empty pass and depth-store), **All four** (`all`), **All four + tiled GPU** (`allgmem`, also `TU_DEBUG=gmem`). New profile line: render passes per frame, uploads moved / could move / that cut the pass, memory-watch faults | Thor, Turnip V39, rallies: Off 46.5 (256 passes/frame); **Uploads before pass 52.3 (68 passes; 296 of 297 in-pass uploads moved)**; watch 16 KB 45.7 and 4 KB 45.4 (uploads 6.8 → 5.0 → 3.8 MB/frame and no texture hashing at 4 KB, but faults 37 → 172 → 340/frame, same upload count, no FPS); Crop area 45.3; No copies 45.3; All four 52.8; All + `TU_DEBUG=gmem` 47.8–52 (no better). |
+| **v85** | **F15** uploads before the pass made permanent (off with Hidden passes → Drawn, like F10–F12). T2–T4 code, Test row and `TT_TEST` removed. Profile keeps the render-pass line. | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -195,6 +195,7 @@ removable, so a problem in another venue/character/mode can be checked and trace
 | F10 | v61 | depth-only passes into 640- and 1120-wide depth buffers (~37 + ~57 draws) | launcher Hidden passes → Drawn |
 | F11 | v67 | full-size pass writing neither colour nor depth (~96 draws) | launcher Hidden passes → Drawn |
 | F12 | v77 | render-target copies between passes (~26 draws, ~5 screens of pixels per frame); seen fine in 2 venues | launcher Hidden passes → Drawn |
+| F15 | v85 | uploads recorded in front of the open render pass when no draw of that pass read those pages (page-level check); no visual change expected or reported | launcher Hidden passes → Drawn |
 | F9 (lower risk) | v55 | GPU re-conversion of textures whose guest bytes are unchanged | remove section F9 |
 | Game MSAA 1 sample | ~v20 | the game's 4-sample tiled rendering | `TtGameMsaaOverride` in main.cpp |
 
@@ -245,8 +246,7 @@ State at v82, AYN Thor (Adreno 740, Turnip Gen8 V38), rallies at 720p with FXAA:
 
 The owner considers the port finished at v82. If work resumes:
 
-0. **v84 results first** (Test row). Keep what helps, remove the rest and the row. Then, in
-   order: direct resolve → texture copy; ADPF performance hints (lets Android lower clocks when
+0. After F15 (~52 FPS, ~68 passes/frame, ~31 of them forced by resolves), in order: direct resolve → texture copy; ADPF performance hints (lets Android lower clocks when
    frames are easy; the NFS Carbon port uses it); the upstream fix `cf75b896` (vertex buffers
    bound at an unchanged address are never asked for again in v0.10.0).
 0. **An own PM4-level renderer** (the NFS Carbon route) is the proven way to a locked 60 with
