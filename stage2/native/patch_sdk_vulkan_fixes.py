@@ -850,4 +850,222 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     includes=("#include <cstdlib>", "#include <cstring>", "#include <unordered_map>"))
 done.append("F16 resolves of the depth buffers F10 leaves empty skipped")
 
+
+# ============================================================ TESTS (v89, temporary)
+# TT_TEST=direct: colour resolves copied straight from the host render target into the host
+# texture (one image copy) instead of render target -> EDRAM buffer -> guest bytes in shared
+# memory -> scratch buffer -> texture. Only when everything is plain: 8888 colour, no MSAA,
+# no offsets, one render target owns the whole area, and exactly one existing 8888 texture
+# sits at the destination address. Guest memory is NOT written in that case.
+# The resolve swaps red and blue on its way to guest memory; the raw copy doesn't, so a
+# texture filled this way is sampled through a view with red and blue swapped.
+# tt_work_stats[14] counts direct copies.
+edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
+    "  void Execute(VkCommandBuffer command_buffer);\n",
+    "  void Execute(VkCommandBuffer command_buffer);\n"
+    "\n"
+    "  // tt-android test (v89): one image-to-image copy, run in order with everything else.\n"
+    "  struct TtArgsCopyImage {\n"
+    "    VkImage src;\n"
+    "    VkImage dst;\n"
+    "    VkImageCopy region;\n"
+    "  };\n"
+    "  void TtCmdCopyImage(VkImage src, VkImage dst, const VkImageCopy& region) {\n"
+    "    auto& args = *reinterpret_cast<TtArgsCopyImage*>(\n"
+    "        WriteCommand(Command::kTtCopyImage, sizeof(TtArgsCopyImage)));\n"
+    "    args.src = src;\n"
+    "    args.dst = dst;\n"
+    "    args.region = region;\n"
+    "  }\n"), (
+    "    kVkCopyBufferToImage,\n",
+    "    kVkCopyBufferToImage,\n    kTtCopyImage,\n"))
+edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
+    "      case Command::kVkCopyBufferToImage: {\n",
+    "      case Command::kTtCopyImage: {  // tt-android test (v89)\n"
+    "        auto& args = *reinterpret_cast<const TtArgsCopyImage*>(stream);\n"
+    "        dfn.vkCmdCopyImage(command_buffer, args.src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,\n"
+    "                           args.dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &args.region);\n"
+    "      } break;\n"
+    "\n"
+    "      case Command::kVkCopyBufferToImage: {\n"))
+edit("include/rex/ui/vulkan/functions/device_1_0.inc", (
+    "XE_UI_VULKAN_FUNCTION(vkCmdCopyBufferToImage)\n",
+    "XE_UI_VULKAN_FUNCTION(vkCmdCopyBufferToImage)\nXE_UI_VULKAN_FUNCTION(vkCmdCopyImage)\n"))
+edit("include/rex/graphics/pipeline/texture/cache.h", (
+    "  rex::thread::global_critical_region global_critical_region_;\n",
+    " protected:  // tt-android test (v89)\n"
+    "  rex::thread::global_critical_region global_critical_region_;\n"
+    " private:\n"), (
+    "  std::unordered_map<TextureKey, std::unique_ptr<Texture>, TextureKey::Hasher> textures_;\n",
+    " protected:  // tt-android test (v89)\n"
+    "  std::unordered_map<TextureKey, std::unique_ptr<Texture>, TextureKey::Hasher> textures_;\n"
+    " private:\n"))
+edit("include/rex/graphics/vulkan/texture_cache.h", (
+    "    VkImage image() const { return image_; }\n",
+    "    VkImage image() const { return image_; }\n"
+    "    // tt-android test (v89): filled by a raw copy from a render target (red/blue not swapped).\n"
+    "    bool tt_rb_swapped_ = false;\n"), (
+    "  void GetTextureUsageMasks(VulkanTexture::Usage usage, VkPipelineStageFlags& stage_mask,\n",
+    " public:\n"
+    "  // tt-android test (v89): the host image a colour resolve to this page can be copied into\n"
+    "  // directly (made ready as a transfer destination), or null.\n"
+    "  VkImage TtDirectResolveTarget(uint32_t base_page, uint32_t width, uint32_t height,\n"
+    "                                uint32_t endian, bool rb_swapped, VkExtent2D& extent_out);\n"
+    " protected:\n"
+    "  void GetTextureUsageMasks(VulkanTexture::Usage usage, VkPipelineStageFlags& stage_mask,\n"))
+edit("src/graphics/vulkan/texture_cache.cpp", (
+    "  view_key.host_swizzle = host_swizzle;\n\n  view_key.is_array = uint32_t(is_array);\n",
+    "  if (tt_rb_swapped_ && vulkan_device->properties().imageViewFormatSwizzle) {  // tt-android test (v89)\n"
+    "    uint32_t swapped = 0;\n"
+    "    for (uint32_t i = 0; i < 4; ++i) {\n"
+    "      uint32_t source = (host_swizzle >> (3 * i)) & 0b111;\n"
+    "      if (source == 0) {\n"
+    "        source = 2;\n"
+    "      } else if (source == 2) {\n"
+    "        source = 0;\n"
+    "      }\n"
+    "      swapped |= source << (3 * i);\n"
+    "    }\n"
+    "    host_swizzle = swapped;\n"
+    "  }\n"
+    "  view_key.host_swizzle = host_swizzle;\n\n  view_key.is_array = uint32_t(is_array);\n"), (
+    "  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
+    "  TextureKey texture_key = vulkan_texture.key();\n",
+    "  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
+    "  if (vulkan_texture.tt_rb_swapped_) {  // tt-android test (v89): a normal load again\n"
+    "    vulkan_texture.tt_rb_swapped_ = false;\n"
+    "    tt_views_changed.store(true, std::memory_order_relaxed);\n"
+    "  }\n"
+    "  TextureKey texture_key = vulkan_texture.key();\n"), (
+    "VkImageView VulkanTextureCache::VulkanTexture::GetView(bool is_signed, uint32_t host_swizzle,\n",
+    "VkImage VulkanTextureCache::TtDirectResolveTarget(uint32_t base_page, uint32_t width,\n"
+    "                                                  uint32_t height, uint32_t endian,\n"
+    "                                                  bool rb_swapped, VkExtent2D& extent_out) {\n"
+    "  if (tt_views_changed.exchange(false, std::memory_order_relaxed)) ResetTextureBindings();\n"
+    "  if (!command_processor_.GetVulkanDevice()->properties().imageViewFormatSwizzle) {\n"
+    "    return VK_NULL_HANDLE;\n"
+    "  }\n"
+    "  VulkanTexture* found = nullptr;\n"
+    "  for (const auto& pair : textures_) {\n"
+    "    const TextureKey& key = pair.first;\n"
+    "    if (key.base_page != base_page) continue;\n"
+    "    // Anything else looking at this memory needs the bytes: keep the normal path.\n"
+    "    if (found || key.format != xenos::TextureFormat::k_8_8_8_8 ||\n"
+    "        key.dimension != xenos::DataDimension::k2DOrStacked || key.depth_or_array_size_minus_1 ||\n"
+    "        key.mip_max_level || key.scaled_resolve || key.signed_separate ||\n"
+    "        uint32_t(key.endianness) != endian || uint32_t(key.width_minus_1) + 1 > width ||\n"
+    "        uint32_t(key.height_minus_1) + 1 > height) {\n"
+    "      return VK_NULL_HANDLE;\n"
+    "    }\n"
+    "    found = static_cast<VulkanTexture*>(pair.second.get());\n"
+    "  }\n"
+    "  if (!found) return VK_NULL_HANDLE;\n"
+    "  {\n"
+    "    auto global_lock = global_critical_region_.Acquire();\n"
+    "    if (found->base_outdated(global_lock) || found->mips_outdated(global_lock)) {\n"
+    "      found->MakeUpToDateAndWatch(global_lock);\n"
+    "    }\n"
+    "  }\n"
+    "  {\n"
+    "    std::lock_guard<std::mutex> lock(tt_tex_gpu_mutex);\n"
+    "    tt_tex_gpu_dirty.erase(static_cast<Texture*>(found));\n"
+    "  }\n"
+    "  if (found->tt_rb_swapped_ != rb_swapped) {\n"
+    "    found->tt_rb_swapped_ = rb_swapped;\n"
+    "    ResetTextureBindings();  // the next draw picks the other view\n"
+    "  }\n"
+    "  found->MarkAsUsed();\n"
+    "  VulkanTexture::Usage old_usage = found->SetUsage(VulkanTexture::Usage::kTransferDestination);\n"
+    "  if (old_usage != VulkanTexture::Usage::kTransferDestination) {\n"
+    "    VkPipelineStageFlags src_stage_mask, dst_stage_mask;\n"
+    "    VkAccessFlags src_access_mask, dst_access_mask;\n"
+    "    VkImageLayout old_layout, new_layout;\n"
+    "    GetTextureUsageMasks(old_usage, src_stage_mask, src_access_mask, old_layout);\n"
+    "    GetTextureUsageMasks(VulkanTexture::Usage::kTransferDestination, dst_stage_mask,\n"
+    "                         dst_access_mask, new_layout);\n"
+    "    command_processor_.PushImageMemoryBarrier(\n"
+    "        found->image(), ui::vulkan::util::InitializeSubresourceRange(), src_stage_mask,\n"
+    "        dst_stage_mask, src_access_mask, dst_access_mask, old_layout, new_layout);\n"
+    "  }\n"
+    "  extent_out.width = uint32_t(found->key().width_minus_1) + 1;\n"
+    "  extent_out.height = uint32_t(found->key().height_minus_1) + 1;\n"
+    "  return found->image();\n"
+    "}\n"
+    "\n"
+    "VkImageView VulkanTextureCache::VulkanTexture::GetView(bool is_signed, uint32_t host_swizzle,\n"),
+    prelude="// tt-android test (v89): a texture switched between its normal and red/blue-swapped view.\n"
+            "static std::atomic<bool> tt_views_changed{false};\n",
+    includes=("#include <atomic>",))
+edit("src/graphics/vulkan/render_target_cache.cpp", (
+    "  image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;\n"
+    "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n",
+    "  image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT |\n"
+    "                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT;  // tt-android test (v89)\n"
+    "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n"), (
+    "  // Copying.\n  bool copied = false;\n",
+    "  // tt-android test (v89): plain colour resolve -> one image copy into the host texture.\n"
+    "  static const bool tt_direct = [] {\n"
+    "    const char* test = std::getenv(\"TT_TEST\");\n"
+    "    return test && !std::strcmp(test, \"direct\") && !std::getenv(\"TT_DRAW_ALL_PASSES\");\n"
+    "  }();\n"
+    "  if (tt_direct && resolve_info.copy_dest_extent_length && !resolve_info.IsCopyingDepth() &&\n"
+    "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
+    "    const draw_util::ResolveEdramInfo e = resolve_info.color_edram_info;\n"
+    "    const reg::RB_COPY_DEST_INFO d = resolve_info.copy_dest_info;\n"
+    "    const draw_util::ResolveCoordinateInfo c = resolve_info.coordinate_info;\n"
+    "    const draw_util::ResolveCopyDestCoordinateInfo dc = resolve_info.copy_dest_coordinate_info;\n"
+    "    if (e.msaa_samples == xenos::MsaaSamples::k1X &&\n"
+    "        e.format == uint32_t(xenos::ColorRenderTargetFormat::k_8_8_8_8) && !e.format_is_64bpp &&\n"
+    "        d.copy_dest_format == xenos::ColorFormat::k_8_8_8_8 && !d.copy_dest_array &&\n"
+    "        !d.copy_dest_exp_bias && !c.edram_offset_x_div_8 && !c.edram_offset_y_div_8 &&\n"
+    "        !dc.offset_x_div_8 && !dc.offset_y_div_8 &&\n"
+    "        resolve_info.copy_dest_base == resolve_info.copy_dest_extent_start &&\n"
+    "        !(resolve_info.copy_dest_base & 0xFFF)) {\n"
+    "      uint32_t dump_base, dump_row_length_used, dump_rows, dump_pitch;\n"
+    "      resolve_info.GetCopyEdramTileSpan(dump_base, dump_row_length_used, dump_rows, dump_pitch);\n"
+    "      GetResolveCopyRectanglesToDump(dump_base, dump_row_length_used, dump_rows, dump_pitch,\n"
+    "                                     dump_rectangles_);\n"
+    "      if (dump_rectangles_.size() == 1 && dump_rectangles_[0].render_target &&\n"
+    "          !dump_rectangles_[0].row_first && !dump_rectangles_[0].row_first_start &&\n"
+    "          dump_rectangles_[0].rows == dump_rows) {\n"
+    "        auto& rt = *static_cast<VulkanRenderTarget*>(dump_rectangles_[0].render_target);\n"
+    "        const RenderTargetKey rt_key = rt.key();\n"
+    "        const uint32_t width = uint32_t(c.width_div_8) * 8;\n"
+    "        const uint32_t height = resolve_info.height_div_8 * 8;\n"
+    "        VkExtent2D extent = {};\n"
+    "        VkImage dest = VK_NULL_HANDLE;\n"
+    "        if (!rt_key.is_depth && rt_key.msaa_samples == xenos::MsaaSamples::k1X &&\n"
+    "            rt_key.resource_format == uint32_t(xenos::ColorRenderTargetFormat::k_8_8_8_8) &&\n"
+    "            rt_key.base_tiles == dump_base && rt_key.pitch_tiles_at_32bpp == dump_pitch &&\n"
+    "            width <= dump_pitch * 80) {\n"
+    "          dest = texture_cache.TtDirectResolveTarget(resolve_info.copy_dest_base >> 12, width,\n"
+    "                                                     height, uint32_t(d.copy_dest_endian),\n"
+    "                                                     d.copy_dest_swap != 0, extent);\n"
+    "        }\n"
+    "        if (dest != VK_NULL_HANDLE) {\n"
+    "          command_processor_.PushImageMemoryBarrier(\n"
+    "              rt.image(), ui::vulkan::util::InitializeSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT),\n"
+    "              rt.current_stage_mask(), VK_PIPELINE_STAGE_TRANSFER_BIT, rt.current_access_mask(),\n"
+    "              VK_ACCESS_TRANSFER_READ_BIT, rt.current_layout(),\n"
+    "              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);\n"
+    "          rt.SetUsage(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT,\n"
+    "                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);\n"
+    "          command_processor_.SubmitBarriers(true);\n"
+    "          VkImageCopy region = {};\n"
+    "          region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;\n"
+    "          region.srcSubresource.layerCount = 1;\n"
+    "          region.dstSubresource = region.srcSubresource;\n"
+    "          region.extent.width = extent.width;\n"
+    "          region.extent.height = extent.height;\n"
+    "          region.extent.depth = 1;\n"
+    "          command_buffer.TtCmdCopyImage(rt.image(), dest, region);\n"
+    "          __atomic_fetch_add(&tt_work_stats[14], 1, __ATOMIC_RELAXED);\n"
+    "          resolve_info.copy_dest_extent_length = 0;  // done; clears still happen below\n"
+    "        }\n"
+    "      }\n"
+    "    }\n"
+    "  }\n"
+    "  // Copying.\n  bool copied = false;\n"))
+done.append("TEST (v89) direct colour resolves")
+
 print("\n".join(done))
