@@ -519,6 +519,14 @@ void RunProfiler(std::string dir) {
             std::fprintf(f, "GPU work per frame: %.0f draws, %.1f resolves, %.1f texture loads (%.0f KB), "
                             "%.1f uploads (%.0f KB), %.0f draws of unused passes skipped\n",
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
+            {  // temporary (v84 test round): render passes and what cuts them
+              const char* test = std::getenv("TT_TEST");
+              const bool moving = test && (!std::strcmp(test, "hoist") || !std::strncmp(test, "all", 3));
+              std::fprintf(f, "render passes per frame: %.1f begun; uploads inside a pass: %.1f %s, "
+                              "%.1f cut it; %.1f memory-watch faults\n",
+                           per(9), per(10), moving ? "moved in front of it" : "could move in front of it",
+                           per(11), per(12));
+            }
             std::memcpy(work_prev, work, sizeof work_prev);
           }
           if (tex) {

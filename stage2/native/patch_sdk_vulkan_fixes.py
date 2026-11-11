@@ -32,6 +32,14 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
   D4  tt_present_stats [0] new game images [1] screen paints (F14)
+
+TESTS (temporary, v84; launcher Test row -> TT_TEST; section at the end of this file)
+  T1  hoist    uploads recorded in front of the open render pass instead of cutting it
+  T2  watch16 / watch4  a CPU write invalidates 16 / 4 KB of the GPU buffer, not 256 KB
+  T3  area     a pass covers only what its draws can touch, not the whole render target
+  T4  nocopy   render-target copies dropped completely (F12 leaves an empty pass)
+      tt_work_stats [9] passes begun [10] uploads moved / movable [11] uploads that cut the
+      pass [12] memory-watch invalidations
 """
 import re
 import sys
@@ -600,5 +608,350 @@ edit("src/graphics/vulkan/shared_memory.cpp", (
     prelude="extern \"C\" uint64_t tt_work_stats[16];  // tt-android D2\n",
     includes=("#include <cstdint>",))
 done.append("D2/D3 GPU work and texture counters")
+
+
+# ============================================================ TESTS (v84, temporary)
+# The launcher's Test row sets TT_TEST. Counters go to tt_work_stats:
+#   [9] render passes begun  [10] uploads moved before the open pass (or that could be)
+#   [11] uploads that cut the open pass  [12] memory-watch invalidations
+# Remove this whole section (and the Test row) once the results are in.
+TT_HELPER = (
+    "// tt-android tests: true when the Test row picked `name` (or a combined run).\n"
+    "static inline bool TtTest(const char* name) {\n"
+    "  const char* test = std::getenv(\"TT_TEST\");\n"
+    "  if (!test) return false;\n"
+    "  return !std::strcmp(test, name) || !std::strcmp(test, \"all\") || !std::strcmp(test, \"allgmem\");\n"
+    "}\n")
+
+# ---- T1 Uploads before the pass. Each time a draw needs guest memory that the game wrote
+#      since its last use (~310 times per frame), the emulator ends the open render pass,
+#      copies the data into its big GPU buffer and starts the pass again. On a phone GPU a
+#      pass restart is expensive. With "hoist", the copy is recorded BEFORE the open pass
+#      instead (the command list is replayed later, so this is only a matter of order), as
+#      long as no draw recorded so far in that pass read those pages.
+edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
+    "  void Execute(VkCommandBuffer command_buffer);\n",
+    "  void Execute(VkCommandBuffer command_buffer);\n"
+    "\n"
+    "  // tt-android T1: copies to run just before the command at `position` (a pass begin).\n"
+    "  size_t TtSize() const { return command_stream_.size(); }\n"
+    "  void TtHoistCopy(size_t position, VkBuffer src, VkBuffer dst, const VkBufferCopy& region,\n"
+    "                   VkPipelineStageFlags read_stages, VkAccessFlags read_access) {\n"
+    "    tt_hoists_.push_back({position, src, dst, region});\n"
+    "    tt_hoist_read_stages_ = read_stages;\n"
+    "    tt_hoist_read_access_ = read_access;\n"
+    "  }\n"
+    "  struct TtHoist {\n"
+    "    size_t position;\n"
+    "    VkBuffer src;\n"
+    "    VkBuffer dst;\n"
+    "    VkBufferCopy region;\n"
+    "  };\n"
+    "  std::vector<TtHoist> tt_hoists_;\n"
+    "  VkPipelineStageFlags tt_hoist_read_stages_ = 0;\n"
+    "  VkAccessFlags tt_hoist_read_access_ = 0;\n"))
+edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
+    "void DeferredCommandBuffer::Reset() {\n  command_stream_.clear();\n",
+    "void DeferredCommandBuffer::Reset() {\n  command_stream_.clear();\n  tt_hoists_.clear();\n"), (
+    "  while (stream_remaining) {\n"
+    "    const CommandHeader& header = *reinterpret_cast<const CommandHeader*>(stream);\n",
+    "  size_t tt_hoist_next = 0;\n"
+    "  static const bool tt_crop = TtTest(\"area\");\n"
+    "  VkRect2D tt_scissor = {};\n"
+    "  bool tt_scissor_known = false;\n"
+    "  // tt-android T3: the part of a pass's render area its draws can touch (union of the\n"
+    "  // scissors in force at each draw, and of clear rectangles), or the original area.\n"
+    "  auto tt_pass_area = [&](const uintmax_t* next, size_t remaining,\n"
+    "                          const VkRect2D& original) -> VkRect2D {\n"
+    "    int64_t x0 = INT64_MAX, y0 = INT64_MAX, x1 = INT64_MIN, y1 = INT64_MIN;\n"
+    "    VkRect2D scissor = tt_scissor;\n"
+    "    bool scissor_known = tt_scissor_known;\n"
+    "    auto add = [&](const VkRect2D& r) {\n"
+    "      x0 = std::min<int64_t>(x0, r.offset.x);\n"
+    "      y0 = std::min<int64_t>(y0, r.offset.y);\n"
+    "      x1 = std::max<int64_t>(x1, int64_t(r.offset.x) + r.extent.width);\n"
+    "      y1 = std::max<int64_t>(y1, int64_t(r.offset.y) + r.extent.height);\n"
+    "    };\n"
+    "    while (remaining) {\n"
+    "      const CommandHeader& h = *reinterpret_cast<const CommandHeader*>(next);\n"
+    "      const uint8_t* a = reinterpret_cast<const uint8_t*>(next + kCommandHeaderSizeElements);\n"
+    "      if (h.command == Command::kVkEndRendering || h.command == Command::kVkEndRenderPass) {\n"
+    "        break;\n"
+    "      }\n"
+    "      if (h.command == Command::kVkBeginRendering || h.command == Command::kVkBeginRenderPass) {\n"
+    "        return original;\n"
+    "      }\n"
+    "      if (h.command == Command::kVkSetScissor) {\n"
+    "        const auto& s = *reinterpret_cast<const ArgsVkSetScissor*>(a);\n"
+    "        if (s.first_scissor == 0 && s.scissor_count) {\n"
+    "          scissor = *reinterpret_cast<const VkRect2D*>(\n"
+    "              a + rex::align(sizeof(ArgsVkSetScissor), alignof(VkRect2D)));\n"
+    "          scissor_known = true;\n"
+    "        }\n"
+    "      } else if (h.command == Command::kVkDraw || h.command == Command::kVkDrawIndexed) {\n"
+    "        if (!scissor_known) return original;\n"
+    "        add(scissor);\n"
+    "      } else if (h.command == Command::kVkClearAttachments) {\n"
+    "        const auto& c = *reinterpret_cast<const ArgsVkClearAttachments*>(a);\n"
+    "        size_t o = rex::align(sizeof(ArgsVkClearAttachments), alignof(VkClearAttachment));\n"
+    "        o = rex::align(o + sizeof(VkClearAttachment) * c.attachment_count, alignof(VkClearRect));\n"
+    "        const VkClearRect* rects = reinterpret_cast<const VkClearRect*>(a + o);\n"
+    "        for (uint32_t i = 0; i < c.rect_count; ++i) add(rects[i].rect);\n"
+    "      }\n"
+    "      next += kCommandHeaderSizeElements + h.arguments_size_elements;\n"
+    "      remaining -= kCommandHeaderSizeElements + h.arguments_size_elements;\n"
+    "    }\n"
+    "    const int64_t ox0 = original.offset.x, oy0 = original.offset.y;\n"
+    "    const int64_t ox1 = ox0 + original.extent.width, oy1 = oy0 + original.extent.height;\n"
+    "    x0 = std::max(x0 & ~int64_t(31), ox0);\n"
+    "    y0 = std::max(y0 & ~int64_t(31), oy0);\n"
+    "    x1 = std::min((x1 + 31) & ~int64_t(31), ox1);\n"
+    "    y1 = std::min((y1 + 31) & ~int64_t(31), oy1);\n"
+    "    if (x0 >= x1 || y0 >= y1) return original;\n"
+    "    VkRect2D area;\n"
+    "    area.offset.x = int32_t(x0);\n"
+    "    area.offset.y = int32_t(y0);\n"
+    "    area.extent.width = uint32_t(x1 - x0);\n"
+    "    area.extent.height = uint32_t(y1 - y0);\n"
+    "    return area;\n"
+    "  };\n"
+    "  while (stream_remaining) {\n"
+    "    // tt-android T1: uploads that were moved in front of the pass that begins here.\n"
+    "    if (tt_hoist_next < tt_hoists_.size() &&\n"
+    "        tt_hoists_[tt_hoist_next].position == size_t(stream - command_stream_.data())) {\n"
+    "      const size_t position = tt_hoists_[tt_hoist_next].position;\n"
+    "      VkBufferMemoryBarrier barrier = {};\n"
+    "      barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;\n"
+    "      barrier.srcAccessMask = tt_hoist_read_access_;\n"
+    "      barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;\n"
+    "      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;\n"
+    "      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;\n"
+    "      barrier.buffer = tt_hoists_[tt_hoist_next].dst;\n"
+    "      barrier.offset = 0;\n"
+    "      barrier.size = VK_WHOLE_SIZE;\n"
+    "      dfn.vkCmdPipelineBarrier(command_buffer, tt_hoist_read_stages_,\n"
+    "                               VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &barrier, 0,\n"
+    "                               nullptr);\n"
+    "      while (tt_hoist_next < tt_hoists_.size() &&\n"
+    "             tt_hoists_[tt_hoist_next].position == position) {\n"
+    "        const TtHoist& hoist = tt_hoists_[tt_hoist_next++];\n"
+    "        dfn.vkCmdCopyBuffer(command_buffer, hoist.src, hoist.dst, 1, &hoist.region);\n"
+    "      }\n"
+    "      barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;\n"
+    "      barrier.dstAccessMask = tt_hoist_read_access_;\n"
+    "      dfn.vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,\n"
+    "                               tt_hoist_read_stages_, 0, 0, nullptr, 1, &barrier, 0, nullptr);\n"
+    "    }\n"
+    "    const CommandHeader& header = *reinterpret_cast<const CommandHeader*>(stream);\n"), (
+    # T3: crop the dynamic-rendering pass area
+    "        rendering_info.renderArea = args.render_area;\n",
+    "        rendering_info.renderArea =  // tt-android T3\n"
+    "            tt_crop ? tt_pass_area(stream + header.arguments_size_elements,\n"
+    "                                   stream_remaining - header.arguments_size_elements,\n"
+    "                                   args.render_area)\n"
+    "                    : args.render_area;\n"), (
+    "        auto& args = *reinterpret_cast<const ArgsVkSetScissor*>(stream);\n",
+    "        auto& args = *reinterpret_cast<const ArgsVkSetScissor*>(stream);\n"
+    "        if (args.first_scissor == 0 && args.scissor_count) {  // tt-android T3\n"
+    "          tt_scissor = *reinterpret_cast<const VkRect2D*>(\n"
+    "              reinterpret_cast<const uint8_t*>(stream) +\n"
+    "              rex::align(sizeof(ArgsVkSetScissor), alignof(VkRect2D)));\n"
+    "          tt_scissor_known = true;\n"
+    "        }\n"),
+    prelude=TT_HELPER,
+    includes=("#include <algorithm>", "#include <cstdlib>"))
+
+# The pass a draw opens is where uploads may be moved to; passes opened for render-target
+# copies are not. Both are counted.
+edit("include/rex/graphics/vulkan/command_processor.h", (
+    "  bool in_render_pass_ = false;\n",
+    "  bool in_render_pass_ = false;\n"
+    "  size_t tt_hoist_position_ = SIZE_MAX;  // tt-android T1\n"
+    " public:\n"
+    "  size_t TtHoistPosition() const { return in_render_pass_ ? tt_hoist_position_ : SIZE_MAX; }\n"
+    " private:\n"))
+edit(CP, (
+    "  __atomic_fetch_add(&tt_work_stats[0], 1, __ATOMIC_RELAXED);  // tt-android D2\n",
+    "  __atomic_fetch_add(&tt_work_stats[0], 1, __ATOMIC_RELAXED);  // tt-android D2\n"
+    "  if (shared_memory_) shared_memory_->TtBeginDraw();  // tt-android T1\n"), (
+    "  current_framebuffer_ = framebuffer;\n\n  if (use_dynamic_rendering) {\n"
+    "    VkRenderingAttachmentInfo color_attachments[xenos::kMaxColorRenderTargets];\n",
+    "  current_framebuffer_ = framebuffer;\n"
+    "  tt_hoist_position_ = deferred_command_buffer_.TtSize();  // tt-android T1\n"
+    "  if (shared_memory_) shared_memory_->TtBeginPass();\n"
+    "  __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
+    "\n  if (use_dynamic_rendering) {\n"
+    "    VkRenderingAttachmentInfo color_attachments[xenos::kMaxColorRenderTargets];\n"), (
+    "  current_framebuffer_ = framebuffer;\n\n  if (use_dynamic_rendering) {\n"
+    "    VkRenderingAttachmentInfo color_attachment = {};\n",
+    "  current_framebuffer_ = framebuffer;\n"
+    "  tt_hoist_position_ = SIZE_MAX;  // tt-android T1\n"
+    "  __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
+    "\n  if (use_dynamic_rendering) {\n"
+    "    VkRenderingAttachmentInfo color_attachment = {};\n"), (
+    # Draws that keep a vertex buffer bound without asking for it again still read it.
+    "      if (vertex_buffers_in_sync_[vfetch_index >> 6] & vfetch_bit) {\n"
+    "        continue;\n",
+    "      if (vertex_buffers_in_sync_[vfetch_index >> 6] & vfetch_bit) {\n"
+    "        shared_memory_->TtMarkUsed(vertex_buffer_states_[vfetch_index].address << 2,\n"
+    "                                   vertex_buffer_states_[vfetch_index].size << 2);\n"
+    "        continue;\n"), (
+    "      if (state.address == vfetch_constant.address && state.size == vfetch_constant.size) {\n"
+    "        vertex_buffers_in_sync_[vfetch_index >> 6] |= vfetch_bit;\n"
+    "        continue;\n",
+    "      if (state.address == vfetch_constant.address && state.size == vfetch_constant.size) {\n"
+    "        vertex_buffers_in_sync_[vfetch_index >> 6] |= vfetch_bit;\n"
+    "        shared_memory_->TtMarkUsed(state.address << 2, state.size << 2);\n"
+    "        continue;\n"))
+edit("include/rex/graphics/shared_memory.h", (
+    "  bool RequestRange(uint32_t start, uint32_t length);\n",
+    "  bool RequestRange(uint32_t start, uint32_t length);\n"
+    "\n"
+    "  // tt-android T1: which pages draws have read since the open render pass began. A draw\n"
+    "  // asks for its memory before it opens its pass, so what the current draw asked for is\n"
+    "  // kept in a list and stamped again when a new pass begins.\n"
+    "  void TtBeginDraw() { tt_draw_ranges_.clear(); }\n"
+    "  void TtBeginPass() {\n"
+    "    ++tt_pass_generation_;\n"
+    "    for (const std::pair<uint32_t, uint32_t>& range : tt_draw_ranges_) {\n"
+    "      TtStamp(range.first, range.second);\n"
+    "    }\n"
+    "  }\n"
+    "  void TtMarkUsed(uint32_t start, uint32_t length) {\n"
+    "    if (!length || start >= kBufferSize) return;\n"
+    "    length = std::min(length, kBufferSize - start);\n"
+    "    tt_draw_ranges_.emplace_back(start, length);\n"
+    "    TtStamp(start, length);\n"
+    "  }\n"
+    "  void TtStamp(uint32_t start, uint32_t length) {\n"
+    "    if (tt_page_generation_.empty()) tt_page_generation_.resize(kBufferSize >> page_size_log2_);\n"
+    "    const uint32_t last = (start + (length - 1)) >> page_size_log2_;\n"
+    "    for (uint32_t i = start >> page_size_log2_; i <= last; ++i) {\n"
+    "      tt_page_generation_[i] = tt_pass_generation_;\n"
+    "    }\n"
+    "  }\n"
+    "  bool TtUsedInPass(uint32_t page_first, uint32_t page_count) const {\n"
+    "    for (uint32_t i = page_first; i < page_first + page_count; ++i) {\n"
+    "      if (i < tt_page_generation_.size() && tt_page_generation_[i] == tt_pass_generation_) {\n"
+    "        return true;\n"
+    "      }\n"
+    "    }\n"
+    "    return false;\n"
+    "  }\n"
+    "  std::vector<uint32_t> tt_page_generation_;\n"
+    "  std::vector<std::pair<uint32_t, uint32_t>> tt_draw_ranges_;\n"
+    "  uint32_t tt_pass_generation_ = 1;\n"),
+    includes=("#include <algorithm>",))
+edit("src/graphics/shared_memory.cpp", (
+    "  if (upload_ranges_.empty()) {\n    return true;\n  }\n\n  return UploadRanges(upload_ranges_);\n",
+    "  // tt-android T1: what was asked for is read by the draw that follows, so it counts as\n"
+    "  // read in this pass from now on (marked after its own upload, which may still move).\n"
+    "  const bool tt_uploaded = upload_ranges_.empty() || UploadRanges(upload_ranges_);\n"
+    "  for (const std::pair<uint32_t, uint32_t>& range : merged_ranges) {\n"
+    "    TtMarkUsed(range.first, range.second);\n"
+    "  }\n"
+    "  return tt_uploaded;\n"), (
+    # ---- T2 Tighter memory watch. When the game writes to a page the GPU buffer holds, the
+    #      emulator throws away up to 256 KB around it (fewer write faults), and everything in
+    #      there that a later draw needs is copied to the GPU again even if it didn't change.
+    #      watch4 / watch16: throw away only the 4 / 16 KB block that was written.
+    "  auto global_lock = global_critical_region_.Acquire();\n\n  if (!exact_range) {\n",
+    "  auto global_lock = global_critical_region_.Acquire();\n"
+    "\n"
+    "  const uint32_t tt_page_first = page_first, tt_page_last = page_last;  // tt-android T2\n"
+    "  if (!exact_range) {\n"
+    "    __atomic_fetch_add(&tt_work_stats[12], 1, __ATOMIC_RELAXED);\n"), (
+    "  for (uint32_t i = block_first; i <= block_last; ++i) {\n"
+    "    uint64_t invalidate_bits = UINT64_MAX;\n",
+    "  {  // tt-android T2\n"
+    "    static const uint32_t tt_watch_kb =\n"
+    "        TtTest(\"watch16\") ? 16 : (std::getenv(\"TT_TEST\") && !std::strcmp(std::getenv(\"TT_TEST\"), \"watch4\")) ? 4 : 0;\n"
+    "    if (tt_watch_kb) {\n"
+    "      const uint32_t pages = std::max((tt_watch_kb << 10) >> page_size_log2_, uint32_t(1));\n"
+    "      page_first = std::max(page_first, tt_page_first & ~(pages - 1));\n"
+    "      page_last = std::min(page_last, tt_page_last | (pages - 1));\n"
+    "    }\n"
+    "  }\n"
+    "  for (uint32_t i = block_first; i <= block_last; ++i) {\n"
+    "    uint64_t invalidate_bits = UINT64_MAX;\n"),
+    prelude=TT_HELPER + "extern \"C\" uint64_t tt_work_stats[16];\n",
+    includes=("#include <algorithm>", "#include <cstdlib>", "#include <cstring>"))
+edit("src/graphics/vulkan/shared_memory.cpp", (
+    "  // upload_page_ranges are sorted, use them to determine the range for the\n"
+    "  // ordering barrier.\n"
+    "  Use(Usage::kTransferDestination,\n"
+    "      std::make_pair(upload_page_ranges.front().first << page_size_log2(),\n"
+    "                     (upload_page_ranges.back().first + upload_page_ranges.back().second -\n"
+    "                      upload_page_ranges.front().first)\n"
+    "                         << page_size_log2()));\n"
+    "  command_processor_.SubmitBarriers(true);\n"
+    "  DeferredCommandBuffer& command_buffer = command_processor_.deferred_command_buffer();\n",
+    "  // tt-android T1: inside a pass opened by a draw, an upload of pages that no draw of\n"
+    "  // this pass has read is recorded in front of the pass instead of cutting it.\n"
+    "  DeferredCommandBuffer& command_buffer = command_processor_.deferred_command_buffer();\n"
+    "  static const bool tt_hoist_enabled = TtTest(\"hoist\");\n"
+    "  size_t tt_hoist_position = SIZE_MAX;\n"
+    "  VkPipelineStageFlags tt_read_stages;\n"
+    "  VkAccessFlags tt_read_access;\n"
+    "  GetUsageMasks(Usage::kRead, tt_read_stages, tt_read_access);\n"
+    "  if (command_processor_.TtHoistPosition() != SIZE_MAX) {\n"
+    "    bool movable = last_usage_ == Usage::kRead && !last_written_range_.second;\n"
+    "    for (size_t i = 0; movable && i < upload_page_ranges.size(); ++i) {\n"
+    "      movable = !TtUsedInPass(upload_page_ranges[i].first, upload_page_ranges[i].second);\n"
+    "    }\n"
+    "    __atomic_fetch_add(&tt_work_stats[movable ? 10 : 11], 1, __ATOMIC_RELAXED);\n"
+    "    if (movable && tt_hoist_enabled) tt_hoist_position = command_processor_.TtHoistPosition();\n"
+    "  }\n"
+    "  if (tt_hoist_position == SIZE_MAX) {\n"
+    "    // upload_page_ranges are sorted, use them to determine the range for the\n"
+    "    // ordering barrier.\n"
+    "    Use(Usage::kTransferDestination,\n"
+    "        std::make_pair(upload_page_ranges.front().first << page_size_log2(),\n"
+    "                       (upload_page_ranges.back().first + upload_page_ranges.back().second -\n"
+    "                        upload_page_ranges.front().first)\n"
+    "                           << page_size_log2()));\n"
+    "    command_processor_.SubmitBarriers(true);\n"
+    "  }\n"
+    "  auto tt_copy = [&](VkBuffer upload_buffer) {\n"
+    "    if (tt_hoist_position == SIZE_MAX) {\n"
+    "      command_buffer.CmdVkCopyBuffer(upload_buffer, buffer_, uint32_t(upload_regions_.size()),\n"
+    "                                     upload_regions_.data());\n"
+    "      return;\n"
+    "    }\n"
+    "    for (const VkBufferCopy& region : upload_regions_) {\n"
+    "      command_buffer.TtHoistCopy(tt_hoist_position, upload_buffer, buffer_, region,\n"
+    "                                 tt_read_stages, tt_read_access);\n"
+    "    }\n"
+    "  };\n"), (
+    "        assert_true(upload_buffer_previous != VK_NULL_HANDLE);\n"
+    "        command_buffer.CmdVkCopyBuffer(upload_buffer_previous, buffer_,\n"
+    "                                       uint32_t(upload_regions_.size()), upload_regions_.data());\n",
+    "        assert_true(upload_buffer_previous != VK_NULL_HANDLE);\n"
+    "        tt_copy(upload_buffer_previous);\n"), (
+    "    assert_true(upload_buffer_previous != VK_NULL_HANDLE);\n"
+    "    command_buffer.CmdVkCopyBuffer(upload_buffer_previous, buffer_,\n"
+    "                                   uint32_t(upload_regions_.size()), upload_regions_.data());\n",
+    "    assert_true(upload_buffer_previous != VK_NULL_HANDLE);\n"
+    "    tt_copy(upload_buffer_previous);\n"),
+    prelude=TT_HELPER,
+    includes=("#include <cstdlib>", "#include <cstring>"))
+
+# ---- T4 Render-target copies skipped completely. F12 skips the copy's draw but still opens
+#      and closes a pass for it (and stores depth through a compute pass first). With
+#      "nocopy" the whole copy is dropped, so nothing is recorded for it at all.
+edit("src/graphics/vulkan/render_target_cache.cpp", (
+    "  bool resolve_clear_needed = render_target_resolve_clear_values && resolve_clear_rectangle;\n"
+    "  VkClearRect resolve_clear_rect;\n",
+    "  {  // tt-android T4\n"
+    "    static const bool tt_no_copies =\n"
+    "        std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr && TtTest(\"nocopy\");\n"
+    "    static const std::vector<Transfer> tt_no_transfers[16];\n"
+    "    if (tt_no_copies && render_target_count <= 16) render_target_transfers = tt_no_transfers;\n"
+    "  }\n"
+    "  bool resolve_clear_needed = render_target_resolve_clear_values && resolve_clear_rectangle;\n"
+    "  VkClearRect resolve_clear_rect;\n"),
+    prelude=TT_HELPER,
+    includes=("#include <cstring>",))
+done.append("TESTS T1 uploads before the pass, T2 memory watch size, T3 pass area, T4 no copies")
 
 print("\n".join(done))

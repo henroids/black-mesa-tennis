@@ -37,6 +37,8 @@ test showed, and where things stand now. Last updated 2026-11-05 (build **v82**,
 | MCLA Android port, newer version (consulted 2026-11-05) | https://github.com/gabrielbskk/mcla-recomp-android-g (`config/render_perf.toml`, `src/render_perf.cpp`) | Has the same GPU-wait spin fix as our v76 test (`mcla_fence_spin`, from LARecomp: skips the 32 `mr r31,r31` no-ops in the fence poll and uses the CPU `yield` hint). Theirs is tuned for speed (core stays busy); ours sleeps 100 µs, tuned for lower load. Also single-tile rendering (we already do this via the MSAA override) and RAGE developer switches (no shadows / blur: changes the look, not used). |
 | Table-Tennis-Rockstar-PC v1.0.6–v1.1.2 (2026-11-02) | CHANGELOG.md | Frame-pacing rework: one limiter at the start of the guest Swap with absolute deadlines, late-frame recovery. Smoothness, not load or FPS. Candidate to port later. |
 | rac-rs (consulted) | https://github.com/AsobiCodes/rac-rs | PS2 Ratchet & Clank port in Rust; nothing applicable (its PGO targets CPU time; this port is GPU-bound). |
+| **NFS Carbon recomp for Android** (consulted, v84) | https://github.com/Sampreeth004/nfs-carbon-recomp | Same SDK (v0.10.0), Adreno/Turnip. Went from 20–40 to ~60 FPS (GPU 34–49 ms → ~8 ms per frame) by replacing the SDK's Xenos emulation with **its own renderer plugin** (`renderer/`, ~9,000 lines, loaded through the SDK's `gpu_plugin` seam): reads the PM4 ring itself, translates Xenos microcode → GLSL → SPIR-V at run time (disk cache), real Vulkan images per render target instead of EDRAM emulation, resolves as image copies, persistent vertex arena, pass render area cropped to what is used. No game-side hooks. `CHANGELOG.md` and `docs/frame-census.md` are the write-up. **No licence file: ideas only, no code copied.** Its `patches/rexglue-android.patch` also carries the 'uploads before the pass' and 'cropped pass area' ideas for the Xenos backend (tests T1/T3 here are written independently). |
+| **NFS Most Wanted for Switch / Android** (consulted, v84) | https://github.com/codepdbh/nfsmw-android | GPL-3.0 (same licence as this repo). Same SDK. 1–3 FPS with the emulated GPU → 30+ on a Switch 1 with a native renderer that reads the PM4 ring (27k lines, shaders pre-translated with XenosRecomp, needs ~21 game hooks). `docs/performance-history.md`, `docs/native-renderer.md`, `docs/porting-another-game.md` explain what paid off. |
 
 ## 3. Build and delivery workflow
 
@@ -108,7 +110,8 @@ The owner exports a zip from the launcher. Key files:
 - `syms/`: symbol lists for host offsets.
 
 Env switches the native side still reads: `TT_PROFILE=<dir>`
-(launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). All experiment switches
+(launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). During the v84 round also
+`TT_TEST` (launcher Test row; remove with the row). All experiment switches
 were removed in v56; the history table below says what each experiment found.
 
 ## 5. History: what was done and what it did
@@ -173,6 +176,7 @@ were removed in v56; the history table below says what each experiment found.
 | **v81** | Made permanent: **F8** UI thread no longer waits for its paint (present waits GPU-side), **F14** repaint once per new game frame (presenter; overlay's 60 Hz cap removed), D4 counters. Test row: Less echo / Much less echo only | Owner picked **Much less echo** (rear 0.25) |
 | **v82** | Wrap-up: F13 rear channels fixed at 0.25; Test row and all test switches removed (no TT_TEST left). Final state: rallies ~43–45 FPS at 60, every frame shown; steady 40 at 120 Hz with much lower load | — |
 | **v83** | Start screen: self-playing vertical Pong in the empty strip left of the menu (`PongView.java`, ported from the owner's canvas Pong in github.com/henroids/not_portfolio `js/script.js`; both paddles computer-controlled, pixel grid, start-screen colours; runs only while the start screen is in front) | — |
+| **v84** | New optimisation round (goal: 60 FPS, less load). Source review found what earlier rounds missed: **the emulator ends and restarts the render pass for every upload** (`VulkanSharedMemory::UploadRanges` → `SubmitBarriers(true)`), ~310 times per frame, plus every texture load and resolve; render targets are 1280×2048 / 640×4096 and every pass covers all of it; a CPU write throws away up to 256 KB of GPU-buffer contents around it, so ~7 MB is re-uploaded per frame. Test row (`TT_TEST`): **Uploads before pass** (`hoist`, T1: an upload inside an open pass is recorded in front of the pass when no draw of that pass read those pages), **Memory watch 16 KB / 4 KB** (`watch16` / `watch4`, T2), **Crop pass area** (`area`, T3: pass area = union of its draws' scissors and clears), **No copies at all** (`nocopy`, T4: F12 without the empty pass and depth-store), **All four** (`all`), **All four + tiled GPU** (`allgmem`, also `TU_DEBUG=gmem`). New profile line: render passes per frame, uploads moved / could move / that cut the pass, memory-watch faults | **Not tested yet** |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -213,10 +217,42 @@ State at v82, AYN Thor (Adreno 740, Turnip Gen8 V38), rallies at 720p with FXAA:
 - Presentation: since F8/F14 the screen shows every game frame (before v81 only about half).
 - At 40 FPS on the 120 Hz screen the load drops a lot (GPU thread ~25%, game main thread ~10%).
 
+### What the v84 review added
+
+- **Render-pass restarts.** A phone GPU pays for every pass begin/end (state reload, flushes,
+  waits). The Xenos backend restarts the pass for every shared-memory upload (~310 per frame
+  for ~660 draws), every texture load and every resolve. v50 only skipped the barrier command,
+  not the restart, so it didn't measure this. The NFS Most Wanted port measured the same thing
+  on the same SDK: its 'uploads brought forward' switch, when turned off, cost ~15 ms of frame
+  time.
+- **Oversized passes.** Host render targets are as tall as the EDRAM allows (1280×2048,
+  640×4096) and every pass's area is the whole target with load+store, 2.8–5.7× the pixels the
+  game uses. Only matters when the driver renders a pass in tiles (GMEM).
+- **Over-invalidation.** `SharedMemory::MemoryInvalidationCallback` widens every CPU write to
+  256 KB. Everything in that block is uploaded again (and re-watched: mprotect on both the GPU
+  thread and the game thread). The ~30 'CPU-written but unchanged' textures per frame (F9) are
+  the same effect.
+- **Resolves** (~31 per frame) each cost three full passes over the pixels: render target →
+  EDRAM buffer, EDRAM → guest-format bytes in shared memory, then the texture load converts
+  those bytes back into a host texture. v53 put the texture-load third alone at ~3 ms/frame.
+  A direct render-target → texture copy is the next candidate after v84 (not built yet).
+- **Why Switch 2 games run well on the same hardware**: those ports (e.g. BananaNative, 'NVN on
+  Vulkan, no system emulation') run the game's ARM64 code directly and translate its graphics
+  API calls to Vulkan one-to-one. Nothing imitates the console's GPU hardware. This port's cost
+  is the Xenos/EDRAM imitation, not the game.
+
 ## 7. Suggested next steps
 
 The owner considers the port finished at v82. If work resumes:
 
+0. **v84 results first** (Test row). Keep what helps, remove the rest and the row. Then, in
+   order: direct resolve → texture copy; ADPF performance hints (lets Android lower clocks when
+   frames are easy; the NFS Carbon port uses it); the upstream fix `cf75b896` (vertex buffers
+   bound at an unchanged address are never asked for again in v0.10.0).
+0. **An own PM4-level renderer** (the NFS Carbon route) is the proven way to a locked 60 with
+   headroom on this SDK: no game hooks, ~9–10k lines, replaces `rexgpu-xenos` through the
+   `gpu_plugin` seam, Xenos backend kept as a fallback. Several weeks of test builds, since
+   nothing can be run without the owner's device.
 1. **A native (high-level) renderer** is the realistic way to a fixed 60 FPS: hook the game's
    D3D calls and draw with Vulkan directly, shaders pre-translated, no Xenos emulation. See the
    Naruto recomps in section 2. Multi-month: Table Tennis is RAGE-engine, and the reference is
