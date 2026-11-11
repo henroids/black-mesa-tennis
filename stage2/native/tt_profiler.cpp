@@ -520,7 +520,8 @@ void RunProfiler(std::string dir) {
                             "%.1f uploads (%.0f KB), %.0f draws of unused passes skipped\n",
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
             std::fprintf(f, "render passes per frame: %.1f begun; uploads inside a pass: %.1f moved in "
-                            "front of it, %.1f cut it\n", per(9), per(10), per(11));
+                            "front of it, %.1f cut it; %.1f resolves of unused buffers skipped\n",
+                         per(9), per(10), per(11), per(13));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
           if (tex) {
