@@ -1047,7 +1047,8 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n"), (
     "  // Copying.\n  bool copied = false;\n",
     "  // tt-android F17: plain colour resolve -> one image copy into the host texture.\n"
-    "  static const bool tt_direct = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
+    "  static const bool tt_direct = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr &&\n"
+    "                                !TtTestIs(\"nodirect\");  // test v103\n"
     "  if (tt_direct && resolve_info.copy_dest_extent_length && !resolve_info.IsCopyingDepth() &&\n"
     "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
     "    const draw_util::ResolveEdramInfo e = resolve_info.color_edram_info;\n"
@@ -1056,7 +1057,8 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "    const draw_util::ResolveCopyDestCoordinateInfo dc = resolve_info.copy_dest_coordinate_info;\n"
     "    // A 4x render target resolved with all four samples averaged (the game's 2x2\n"
     "    // downsample) goes through vkCmdResolveImage the same way (v91).\n"
-    "    const bool tt_4x = e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
+    "    const bool tt_4x = !TtTestIs(\"no4x\") &&  // test v103\n"
+    "                       e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
     "                       resolve_info.rb_copy_control.copy_sample_select ==\n"
     "                           xenos::CopySampleSelect::k0123;\n"
     "    if (!resolve_info.IsCopyingDepth()) {\n"
@@ -1115,7 +1117,8 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  }\n"
     "  // tt-android F18: plain depth resolve (D24S8, no MSAA) -> the R32F\n"
     "  // host texture, written by a small compute shader that reads the host depth target.\n"
-    "  static const bool tt_depth = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
+    "  static const bool tt_depth = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr &&\n"
+    "                               !TtTestIs(\"nodirect\") && !TtTestIs(\"nodepth\");  // test v103\n"
     "  if (tt_depth && resolve_info.copy_dest_extent_length && resolve_info.IsCopyingDepth() &&\n"
     "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
     "    static const uint32_t tt_depth_copy_cs[] = {\n"
@@ -1331,4 +1334,17 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
 done.append("F17 colour resolves as one direct image copy")
 
 
+# ============================================================ TESTS (v103, temporary)
+# Retroid Pocket Duo (Adreno 722): v102 loses the GPU ("faulted or hung") at the first serve;
+# v89 (no F17/F18) played a match. Test row: nodirect (F17+F18 off), no4x (F17's
+# vkCmdResolveImage path off), nodepth (F18 off).
+edit("src/graphics/vulkan/render_target_cache.cpp", (
+    "  // Nothing to copy/clear.\n",
+    "  // Nothing to copy/clear.\n"),
+    prelude="// tt-android test (v103): the launcher's Test row.\n"
+            "static bool TtTestIs(const char* name) {\n"
+            "  const char* test = std::getenv(\"TT_TEST\");\n"
+            "  return test && !std::strcmp(test, name);\n"
+            "}\n",
+    includes=("#include <cstdlib>", "#include <cstring>"))
 print("\n".join(done))
