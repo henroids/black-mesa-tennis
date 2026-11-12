@@ -33,6 +33,8 @@ FIXES (each measured to help; see HANDOFF.md for the history)
                                                      ~55->60 FPS, then GPU 96 -> 86 % at 60
   F18       plain depth resolves written straight into the host texture by a small
             compute shader (SPIR-V embedded below)                     GPU 83.5 -> 81 % at 60
+  F19       persistent VkPipelineCache next to the shader storage (Qualcomm's driver
+            otherwise recompiles every pipeline on every launch: Retroid Pocket Duo)
   (F10-F12 and F15-F18 are all switched off by TT_DRAW_ALL_PASSES=1: launcher
    "Hidden passes -> Drawn")
   Measured on the AYN Thor, Turnip Gen8 V38/V39, 720p, FXAA, 60 FPS setting, rallies.
@@ -1362,12 +1364,116 @@ edit("src/graphics/vulkan/pipeline_cache.cpp", (
     "  TtSlowStep tt_slow_step(\"shader translation\");  // tt-android D5\n"
     "  // Perform translation.\n"
     "  // If this fails the shader will be marked as invalid and ignored later.\n"),
-    prelude="#define TT_SLOW_LOG REXGPU_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
+    prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
 edit("src/input/sdl/sdl_input_driver.cpp", (
     "  return SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,\n",
     "  TtSlowStep tt_slow_step(\"controller rumble\");  // tt-android D5\n"
     "  return SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,\n"),
     prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
 done.append("D5 slow-step log (pipeline creation, shader translation, rumble)")
+
+
+# ---- F19 (v105): persistent Vulkan pipeline cache. The SDK creates every pipeline with no
+#      VkPipelineCache. Turnip keeps its own disk cache, but Qualcomm's driver (Retroid Pocket
+#      Duo) compiled everything again on every launch: stalls of 0.5-4 s in the first minute
+#      with Shaders: Wait. The cache lives next to the SDK's shader storage and is written
+#      every 16 new pipelines or 15 s, and when shader storage shuts down. The driver checks
+#      the header itself and ignores data from another GPU or driver version.
+edit("include/rex/ui/vulkan/functions/device_1_0.inc", (
+    "XE_UI_VULKAN_FUNCTION(vkCreateGraphicsPipelines)\n",
+    "XE_UI_VULKAN_FUNCTION(vkCreateGraphicsPipelines)\n"
+    "XE_UI_VULKAN_FUNCTION(vkCreatePipelineCache)\n"
+    "XE_UI_VULKAN_FUNCTION(vkDestroyPipelineCache)\n"
+    "XE_UI_VULKAN_FUNCTION(vkGetPipelineCacheData)\n"))
+edit("src/graphics/vulkan/pipeline_cache.cpp", (
+    "  auto shader_storage_root = cache_root / \"shaders\";\n"
+    "  auto shader_storage_shareable_root = shader_storage_root / \"shareable\";\n",
+    "  auto shader_storage_root = cache_root / \"shaders\";\n"
+    "  auto shader_storage_shareable_root = shader_storage_root / \"shareable\";\n"
+    "  TtPipelineCacheOpen(command_processor_.GetVulkanDevice(),\n"
+    "                      shader_storage_root / \"tt_vk_pipeline_cache.bin\");  // tt-android F19\n"), (
+    "  shader_storage_cache_root_.clear();\n  shader_storage_title_id_ = 0;\n}\n",
+    "  shader_storage_cache_root_.clear();\n  shader_storage_title_id_ = 0;\n"
+    "  TtPipelineCacheSave(true);  // tt-android F19\n}\n"), (
+    "  VkResult create_result = dfn.vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1,\n"
+    "                                                         &pipeline_create_info, nullptr, &pipeline);\n",
+    "  VkResult create_result = dfn.vkCreateGraphicsPipelines(device, tt_pc.cache, 1,  // F19\n"
+    "                                                         &pipeline_create_info, nullptr, &pipeline);\n"
+    "  if (create_result == VK_SUCCESS) TtPipelineCacheSave(false);  // tt-android F19\n"),
+    prelude=(
+    "// tt-android F19: persistent VkPipelineCache.\n"
+    "struct TtPipelineCacheState {\n"
+    "  const rex::ui::vulkan::VulkanDevice* device = nullptr;\n"
+    "  VkPipelineCache cache = VK_NULL_HANDLE;\n"
+    "  std::filesystem::path path;\n"
+    "  std::mutex save_mutex;\n"
+    "  std::atomic<uint32_t> unsaved{0};\n"
+    "  std::chrono::steady_clock::time_point last_save = std::chrono::steady_clock::now();\n"
+    "};\n"
+    "static TtPipelineCacheState tt_pc;\n"
+    "static void TtPipelineCacheOpen(const rex::ui::vulkan::VulkanDevice* device,\n"
+    "                                const std::filesystem::path& path) {\n"
+    "  if (tt_pc.cache != VK_NULL_HANDLE || !device) return;\n"
+    "  tt_pc.device = device;\n"
+    "  tt_pc.path = path;\n"
+    "  std::vector<char> data;\n"
+    "  if (FILE* f = rex::filesystem::OpenFile(path, \"rb\")) {\n"
+    "    rex::filesystem::Seek(f, 0, SEEK_END);\n"
+    "    const int64_t size = rex::filesystem::Tell(f);\n"
+    "    rex::filesystem::Seek(f, 0, SEEK_SET);\n"
+    "    if (size > 0 && size < (int64_t(256) << 20)) {\n"
+    "      data.resize(size_t(size));\n"
+    "      if (fread(data.data(), 1, data.size(), f) != data.size()) data.clear();\n"
+    "    }\n"
+    "    fclose(f);\n"
+    "  }\n"
+    "  VkPipelineCacheCreateInfo info = {};\n"
+    "  info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;\n"
+    "  info.initialDataSize = data.size();\n"
+    "  info.pInitialData = data.empty() ? nullptr : data.data();\n"
+    "  const auto& dfn = device->functions();\n"
+    "  if (dfn.vkCreatePipelineCache(device->device(), &info, nullptr, &tt_pc.cache) != VK_SUCCESS) {\n"
+    "    info.initialDataSize = 0;\n"
+    "    info.pInitialData = nullptr;\n"
+    "    if (dfn.vkCreatePipelineCache(device->device(), &info, nullptr, &tt_pc.cache) != VK_SUCCESS) {\n"
+    "      tt_pc.cache = VK_NULL_HANDLE;\n"
+    "    }\n"
+    "  }\n"
+    "  REXLOG_INFO(\"tt: pipeline cache {} ({} KB loaded)\",\n"
+    "              tt_pc.cache != VK_NULL_HANDLE ? \"ready\" : \"unavailable\", data.size() / 1024);\n"
+    "}\n"
+    "static void TtPipelineCacheSave(bool force) {\n"
+    "  if (tt_pc.cache == VK_NULL_HANDLE) return;\n"
+    "  const uint32_t unsaved = force ? tt_pc.unsaved.load() : tt_pc.unsaved.fetch_add(1) + 1;\n"
+    "  const auto now = std::chrono::steady_clock::now();\n"
+    "  if (!force && unsaved < 16 && now - tt_pc.last_save < std::chrono::seconds(15)) return;\n"
+    "  if (!unsaved) return;\n"
+    "  std::unique_lock<std::mutex> lock(tt_pc.save_mutex, std::try_to_lock);\n"
+    "  if (!lock.owns_lock()) return;\n"
+    "  tt_pc.unsaved = 0;\n"
+    "  tt_pc.last_save = now;\n"
+    "  const auto& dfn = tt_pc.device->functions();\n"
+    "  size_t size = 0;\n"
+    "  if (dfn.vkGetPipelineCacheData(tt_pc.device->device(), tt_pc.cache, &size, nullptr) !=\n"
+    "          VK_SUCCESS || !size) {\n"
+    "    return;\n"
+    "  }\n"
+    "  std::vector<char> data(size);\n"
+    "  if (dfn.vkGetPipelineCacheData(tt_pc.device->device(), tt_pc.cache, &size, data.data()) !=\n"
+    "      VK_SUCCESS) {\n"
+    "    return;\n"
+    "  }\n"
+    "  std::filesystem::path temp = tt_pc.path;\n"
+    "  temp += \".tmp\";\n"
+    "  if (FILE* f = rex::filesystem::OpenFile(temp, \"wb\")) {\n"
+    "    const bool ok = fwrite(data.data(), 1, size, f) == size;\n"
+    "    fclose(f);\n"
+    "    std::error_code ec;\n"
+    "    if (ok) std::filesystem::rename(temp, tt_pc.path, ec);\n"
+    "  }\n"
+    "}\n"),
+    includes=("#include <atomic>", "#include <chrono>", "#include <filesystem>", "#include <mutex>",
+              "#include <vector>"))
+done.append("F19 persistent Vulkan pipeline cache")
 
 print("\n".join(done))
