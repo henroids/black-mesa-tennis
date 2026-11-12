@@ -1331,27 +1331,19 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
 done.append("F17 colour resolves as one direct image copy")
 
 
-# ============================================================ TESTS (v98, temporary)
-# v97: with a quarter of the pixels the GPU still did ~82-86 % of its work, at only ~350,000
-# vertices per frame. TT_TEST=tri: on 3 frames of every 4, each draw is cut to its first 3
-# vertices, so nearly all vertex and pixel work is gone and what is left is the cost of
-# issuing ~750 draws (state, bindings, pass begins, copies). The picture flickers on purpose.
-# tt_work_stats[4] counts vertices drawn.
-edit(CP, (
-    "    if (!primitive_processing_result.host_draw_vertex_count) {\n",
-    "    {  // tt-android test (v98)\n"
-    "      static const bool tt_tri = [] {\n"
-    "        const char* test = std::getenv(\"TT_TEST\");\n"
-    "        return test && !std::strcmp(test, \"tri\");\n"
-    "      }();\n"
-    "      if (tt_tri && (frame_current_ & 3) && primitive_processing_result.host_draw_vertex_count > 3) {\n"
-    "        primitive_processing_result.host_draw_vertex_count = 3;\n"
-    "      }\n"
-    "    }\n"
-    "    __atomic_fetch_add(&tt_work_stats[4], primitive_processing_result.host_draw_vertex_count,\n"
-    "                       __ATOMIC_RELAXED);\n"
-    "    if (!primitive_processing_result.host_draw_vertex_count) {\n"),
-    includes=("#include <cstring>",))
-done.append("TEST (v98) tri, vertices per frame")
+# ============================================================ TESTS (v99, temporary)
+# v98: a frame whose draws are all cut to 3 vertices still costs ~63 % of the GPU frame, so
+# most of the GPU's time is per-draw setup, not vertices or pixels. The launcher's Test row
+# sets driver switches (IR3_SHADER_DEBUG=nouboopt / nopreamble); here only counters:
+# tt_work_stats [4] pipeline binds  [5] descriptor-set binds, per frame.
+edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
+    "      case Command::kVkBindPipeline: {\n",
+    "      case Command::kVkBindPipeline: {\n"
+    "        __atomic_fetch_add(&tt_work_stats[4], 1, __ATOMIC_RELAXED);  // tt-android test (v99)\n"), (
+    "      case Command::kVkBindDescriptorSets: {\n",
+    "      case Command::kVkBindDescriptorSets: {\n"
+    "        __atomic_fetch_add(&tt_work_stats[5], 1, __ATOMIC_RELAXED);  // tt-android test (v99)\n"),
+    prelude="extern \"C\" uint64_t tt_work_stats[16];\n")
+done.append("TEST (v99) pipeline / descriptor bind counts")
 
 print("\n".join(done))
