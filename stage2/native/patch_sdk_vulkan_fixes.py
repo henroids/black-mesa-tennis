@@ -1331,22 +1331,4 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
 done.append("F17 colour resolves as one direct image copy")
 
 
-# ============================================================ TESTS (v101, temporary)
-# Census of what the GPU is told to do besides drawing (v100: the ~31 image copies are only
-# ~8 % of the GPU frame). On Adreno every pipeline barrier can make the GPU wait until it is
-# idle, so they are counted as executed (including F15's around moved uploads).
-# tt_work_stats [4] pipeline barriers  [5] buffer copies, per frame.
-edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
-    "      case Command::kVkPipelineBarrier: {\n",
-    "      case Command::kVkPipelineBarrier: {\n"
-    "        __atomic_fetch_add(&tt_work_stats[4], 1, __ATOMIC_RELAXED);  // tt-android test (v101)\n"), (
-    "      case Command::kVkCopyBuffer: {\n",
-    "      case Command::kVkCopyBuffer: {\n"
-    "        __atomic_fetch_add(&tt_work_stats[5], 1, __ATOMIC_RELAXED);  // tt-android test (v101)\n"), (
-    "      dfn.vkCmdPipelineBarrier(command_buffer, tt_hoist_read_stages_,\n",
-    "      __atomic_fetch_add(&tt_work_stats[4], 2, __ATOMIC_RELAXED);  // tt-android test (v101)\n"
-    "      dfn.vkCmdPipelineBarrier(command_buffer, tt_hoist_read_stages_,\n"),
-    prelude="extern \"C\" uint64_t tt_work_stats[16];\n")
-done.append("TEST (v101) barrier / copy census")
-
 print("\n".join(done))
