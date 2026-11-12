@@ -107,7 +107,7 @@ history of what was tried and measured.
 | Device | Chip | Result | Notes |
 |---|---|---|---|
 | **AYN Thor** | Snapdragon 8 Gen 2 (Adreno 740) | Plays well, ~43–46 FPS in rallies | Reference device; active cooling keeps it at full speed |
-| **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Plays fine, slower than the Thor | ~45 FPS at first, then ~30–35 once the phone warms up: after ~8 minutes it lowers its CPU clock (2.8 → 1.2 GHz) to stay cool. Some menu flicker. Needs a controller. Try **40 FPS** or **30 FPS** for steadier play, and Game Enhancer's performance mode |
+| **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Plays well | ~60 FPS over an 8-minute session, including after the phone lowers its CPU clock to stay cool (2.8 → 1.4 GHz). Some menu flicker. Needs a controller. |
 | Xiaomi Mi Mix 3 | Snapdragon 845 (Adreno 630) | Not tested | Installs (Android 10), but much less powerful; expect it to be too slow |
 
 Same settings on both tested devices: 720p, Turnip Gen8 V38, Hidden passes Skipped. Other Android
