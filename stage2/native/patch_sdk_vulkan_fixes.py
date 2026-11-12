@@ -49,8 +49,9 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
   D4  tt_present_stats [0] new game images [1] screen paints (F14)
-  D5  "tt-slow: <step> took N ms" log lines for pipeline creation, shader translation and
-      controller rumble calls of 15 ms or more (Retroid Pocket Duo first-serve stutter)
+  D5  "tt-slow: <step> took N ms" log lines for pipeline creation, shader translation,
+      controller rumble, texture requests, memory uploads and whole draws of 15 ms or more
+      (Retroid Pocket Duo first-serve stutter). A whole draw includes the other steps.
 """
 import re
 import sys
@@ -1370,7 +1371,26 @@ edit("src/input/sdl/sdl_input_driver.cpp", (
     "  TtSlowStep tt_slow_step(\"controller rumble\");  // tt-android D5\n"
     "  return SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,\n"),
     prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
-done.append("D5 slow-step log (pipeline creation, shader translation, rumble)")
+edit("src/graphics/vulkan/texture_cache.cpp", (
+    "void VulkanTextureCache::RequestTextures(uint32_t used_texture_mask) {\n",
+    "void VulkanTextureCache::RequestTextures(uint32_t used_texture_mask) {\n"
+    "  TtSlowStep tt_slow_step(\"texture requests for one draw\");  // tt-android D5 (v107)\n"),
+    prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
+edit("src/graphics/shared_memory.cpp", (
+    "bool SharedMemory::RequestRanges(const std::pair<uint32_t, uint32_t>* ranges, size_t count) {\n",
+    "bool SharedMemory::RequestRanges(const std::pair<uint32_t, uint32_t>* ranges, size_t count) {\n"
+    "  TtSlowStep tt_slow_step(\"memory upload for one draw\");  // tt-android D5 (v107)\n"),
+    prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES + ("#include <rex/logging/macros.h>",))
+edit(CP, (
+    "bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t index_count,\n"
+    "                                       IndexBufferInfo* index_buffer_info,\n"
+    "                                       bool major_mode_explicit) {\n",
+    "bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t index_count,\n"
+    "                                       IndexBufferInfo* index_buffer_info,\n"
+    "                                       bool major_mode_explicit) {\n"
+    "  TtSlowStep tt_slow_step(\"one draw\");  // tt-android D5 (v107)\n"),
+    prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
+done.append("D5 slow-step log (pipeline creation, shader translation, rumble, texture requests, memory uploads, whole draws)")
 
 
 # ---- F19 (v105): persistent Vulkan pipeline cache. The SDK creates every pipeline with no
