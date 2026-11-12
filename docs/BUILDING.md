@@ -78,4 +78,5 @@ git checkout main && git pull                            # back to the newest bu
 | `ISO not found` | Check the path: forward slashes, `/mnt/c/...`, and keep the quotes if it has spaces. |
 | A stage fails | It prints `FAILED:` and the log file. Open an issue and attach `~/tt-android/tt-stage1-logs.zip` or `tt-stage2-logs.zip` (logs only, no game files). |
 | The game starts with the system driver after a crash | The launcher falls back to the system driver if the last session with a custom driver didn't close cleanly. Select your driver again. |
+| The game crashes or freezes at the first serve, or runs very slowly | Check **GPU driver** on the start screen. On Snapdragon 8 Gen 2 devices use a Turnip Gen8 build (V38/V39); on other chips (e.g. the Retroid Pocket Duo) use **System**. |
 | Something looks wrong in game | Start screen → **Hidden passes → Drawn** and compare; then report it with a screenshot (L3 + R3) and the exported logs. |

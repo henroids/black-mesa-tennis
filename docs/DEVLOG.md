@@ -5,7 +5,7 @@ problem was, what we tried, what the logs showed, what we concluded from that, a
 changed as a result.
 
 **How each round worked.** Claude wrote a build. Henry compiled it on his PC from his own
-disc image, played it on his AYN Thor, and exported the app's log zip from the start screen.
+disc image, played it on his AYN Thor (and, in phase 10, his other devices), and exported the app's log zip from the start screen.
 Claude read the logs, worked out what they meant, and wrote the next build. Every number below
 comes from those exported logs (FPS lines, `profile.txt`, `timeline.txt`, `cpu_threads.txt`)
 or from Henry's notes on what he saw on screen. The raw logs themselves aren't in the
@@ -13,16 +13,23 @@ repository, because some of them (such as `game_hotcode.txt`) contain machine co
 game. The figures were copied from them into commit messages and [HANDOFF.md](../HANDOFF.md)
 as each round finished.
 
-Unless a round says otherwise, the measurements are **gameplay rallies at 720p** on the AYN
-Thor (Adreno 740) with the Turnip driver. "Last-10 s FPS" means the average over the last
+Unless a round says otherwise, the measurements are **gameplay rallies at 720p with FXAA and the
+60 FPS setting** on the AYN Thor (Adreno 740) with the Turnip driver (Gen8 V38 up to v83, Gen8
+V39 from v84). "Last-10 s FPS" means the average over the last
 10 seconds of a rally. Results within about ±0.5 FPS are treated as noise.
 
 Short names used throughout:
 - **CP**: the emulated Xbox 360 command processor, the thread that turns the game's
   graphics commands into Vulkan work.
 - **KGSL**: the Qualcomm kernel graphics driver underneath Vulkan on Android.
-- **F1–F14**: the permanent fixes in `stage2/native/patch_sdk_vulkan_fixes.py`, where each
+- **F1–F18**: the permanent fixes in `stage2/native/patch_sdk_vulkan_fixes.py`, where each
   one is described at the top of the file.
+- **Resolve**: the Xbox 360 copying a finished image (colour or depth) out of its video memory
+  so the game can use it as a texture, e.g. for shadows, blur and bloom.
+- **Render pass**: a stretch of drawing into the same images. Starting and ending one is
+  expensive on phone GPUs.
+- **GPU busy %**: how much of the time the graphics chip is working, read from the kernel
+  driver. Once the game is capped at 60 FPS, a lower number means less load and heat.
 
 ---
 
@@ -347,6 +354,83 @@ from full brightness to 80% and then to about 70%.
 
 ---
 
+## Phase 9: the push to 60 FPS, then lower load (v84–v102)
+
+A new review of the emulator's source, together with two other Android ports built on the same
+SDK (NFS Carbon and NFS Most Wanted), found what the earlier rounds had missed: the cost wasn't
+the drawing itself but the emulator's bookkeeping around it.
+
+**v84: render-pass restarts.**
+- The emulator ended and restarted the render pass every time a draw needed game memory copied
+  to the GPU, about **256 restarts per frame** for ~660 draws. Phone GPUs pay for every restart.
+- **Uploads before the pass** (the copy is placed in front of the pass instead of cutting it):
+  **46.5 → 52.3 FPS**, render passes 256 → 68 per frame.
+- No gain: a smaller memory watch (16 / 4 KB instead of 256 KB), a cropped pass area, dropping
+  copies completely, forcing tiled rendering.
+
+**v85:** uploads-before-the-pass made permanent as **F15**.
+
+**v86: what do resolves cost?** About 31 per frame, each one three full passes over its pixels.
+With resolves slowed to one in eight, the game sat at **60 FPS with the GPU ~80% busy** instead
+of 99%. So resolves were ~6 ms of the ~19 ms frame.
+
+**v87–v88:** the game still resolved two depth buffers that F10 already leaves empty (~7 MB a
+frame). Skipping them after the first four: **51.9 → 55.5 FPS**. Permanent as **F16**.
+
+**v89–v90: direct colour copies.** A plain colour resolve became one image copy straight from
+the render target into the texture, instead of four steps through emulated memory.
+- **54.8 → 60 FPS** (97% of a 6-minute session at ~60), GPU 97–99% → ~90%.
+- Colours, bloom, blur and shadows looked right in Henry's screenshots. Permanent as **F17**.
+
+**v91–v92: the blur images.** The half- and quarter-size blur images, made by averaging four
+samples, now take the same direct route. At 60 FPS: **GPU ~96% → ~86%**. Part of F17.
+
+**v93–v94: the depth images.** A small compute shader writes the two depth images per frame
+straight into their textures. At 60 FPS: **GPU ~83.5% → ~81%**. Shadows correct in Henry's
+screenshots. Permanent as **F18**.
+
+**v95–v101: looking for the rest (nothing kept).**
+
+| Build | Test | Result at 60 FPS |
+|---|---|---|
+| v95 | Skip uploads whose bytes are unchanged | 5.3 of 6.7 MB per frame was unchanged, but checking cost more: GPU 79 → 82%, CPU 151 → 162% |
+| v95 | Memory watch 4 KB / 16 KB | Uploads 7.3 → 4.1 / 5.4 MB, but 410 / 189 write faults per frame: CPU 181% / 167%, GPU 83% / 82% |
+| v96 | Cropped pass area; forced tiled; forced untiled | 84% / **96%** / 82% (baseline 82.5%): the driver already picks the best mode |
+| v97 | Draw only the centre quarter of the screen | GPU work −14% (main scene) / −18% (everything): pixels are ~20–25% of the GPU frame |
+| v98 | Cut every draw to 3 vertices on 3 frames in 4 | An empty frame still costs ~63% of a full one: most of the time is per-draw setup |
+| v99 | Two Turnip shader-compiler switches | No change; only ~170 program switches per frame |
+| v100 | Image copies at one in eight | ~8% of the GPU frame |
+| v101 | Count GPU sync points | 114 barriers per frame for ~660 draws: not excessive |
+
+**v102: end of the round.** Rallies at a steady 60 FPS on the Thor (98% of a 6-minute session),
+graphics chip **~82% busy at 680 MHz** (it was 99% at ~45 FPS before v84), app CPU ~150% of a
+core. What's left is spread across the emulator's general per-draw work; the next big step would
+be a renderer of its own (see HANDOFF.md section 7). Henry: "I'm happy with the results so far."
+
+---
+
+## Phase 10: other devices (v89–v104)
+
+**Sony Xperia 1 V** (Snapdragon 8 Gen 2, Turnip Gen8 V39, AA Off, build v89): **59.0–59.9 FPS
+in every minute of an 8-minute session**. The phone throttled its big CPU cores from 2.8 to
+1.4 GHz as it warmed up, and the game no longer slowed down with it (on Nov 7, build v80s, it
+went from ~45 to ~35 FPS).
+
+**Retroid Pocket Duo** (Dragonwing Q-7790, Adreno 722, Android 16):
+- **Turnip drivers:** with v102 (Turnip-Duo v5.1 and Gen8 V38) the graphics chip faulted at the
+  first serve (`VK_ERROR_DEVICE_LOST`). An older build (v89) ran matches on Turnip at only
+  ~20–25 FPS.
+- **System (Qualcomm) driver, v102, 720p, FXAA, Frame rate 60:** **~45–52 FPS in matches**,
+  menus 60, app CPU ~280% of a core at ~72 °C.
+- **Frame rate 40:** menus 40, but matches only ~22 FPS, and the profile showed the screen not
+  being repainted normally. Not investigated yet; use 60 there.
+- Henry also noticed one strong stutter at the first serve of a match (two stalls of ~260 and
+  ~140 ms in the log) and an occasional black screen between menus.
+- **v104** adds a log line for any shader build, pipeline creation or controller rumble call
+  that takes 15 ms or more, to find the first-serve stutter.
+
+---
+
 ## What didn't help (and why we're confident)
 
 | Idea | Build | Measured |
@@ -363,12 +447,20 @@ from full brightness to 80% and then to about 70%.
 | Screen at 30 Hz | v58 | 40.7 vs 40.9 |
 | Gamma targets 8-bit, `nolrz` | v72 | No effect |
 | Unclipped draws on CPU | v74 | Noise, same CPU load |
-| Driver choice (all Turnip builds) | no build | 36–38.5; V38 best |
+| Driver choice (all Turnip builds) | no build | 36–38.5; V38 best (V39 equal) |
+| Smaller memory watch (4 / 16 KB) | v84, v95 | Fewer bytes uploaded, but far more write faults: more CPU, no less GPU |
+| Skip unchanged uploads | v95 | Checking costs more than copying |
+| Cropped render-pass area, forced tiling | v84, v96 | No gain; forced tiling much worse |
+| Turnip shader-compiler switches (`nouboopt`, `nopreamble`) | v99 | No change |
 | EU vs US disc | no build | No difference |
 
 ## Where it stands
 
-The GPU is the limit, and the remaining cost is spread thinly across emulating the Xbox 360's
-GPU: ~400 main-pass draws, ~30 resolves, ~60 texture loads, ~400 uploads and ~1,000 barriers
-per frame. A steady 60 FPS would most likely need a native renderer that hooks the game's
-Direct3D calls directly, which would be a multi-month project. See HANDOFF.md sections 6–7.
+Rallies run at a steady **60 FPS on the AYN Thor** (720p, FXAA, Turnip Gen8 V39) with the
+graphics chip ~82% busy, and at ~60 FPS on the Sony Xperia 1 V. The Retroid Pocket Duo plays at
+~45–52 FPS on its system driver.
+
+The remaining GPU time is spread across the emulator's per-draw work: pixels are only ~20–25% of
+it and the image copies ~8%. Lowering it much further would need a renderer of its own that
+replaces the Xbox 360 GPU emulation, as the NFS Carbon Android port did; that would be several
+weeks of test builds. See HANDOFF.md sections 6–7.

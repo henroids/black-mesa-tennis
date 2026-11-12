@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-05 (build **v82**, the wrap-up build).
+test showed, and where things stand now. Last updated 2026-11-12 (build **v104**).
 
 ---
 
@@ -11,7 +11,10 @@ test showed, and where things stand now. Last updated 2026-11-05 (build **v82**,
 - **Goal:** a native Android ARM64 APK of *Rockstar Games presents Table Tennis* (Xbox 360)
   that runs at a **steady 60 FPS during gameplay** on an **AYN Thor**
   (Snapdragon 8 Gen 2, **Adreno 740**, Android 13, KGSL kernel driver).
-- **Current result:** 60 FPS in menus; **~38 FPS during rallies** (Turnip Gen8 V38 driver).
+- **Current result (v104):** **steady 60 FPS in rallies** on the Thor (720p, FXAA, Frame rate 60,
+  Turnip Gen8 V39, Hidden passes Skipped), graphics chip ~82% busy at 680 MHz, app CPU ~150% of
+  a core. Also ~60 FPS on a Sony Xperia 1 V; ~45–52 FPS on a Retroid Pocket Duo (Adreno 722,
+  system driver). See section 6.
 - **Legal/data rules (important):**
   - The repo must never contain game code or data: no ISO, XEX, RPF, generated recompiled
     sources, APKs or `.so` files. `.gitignore` blocks these. The owner builds locally from his
@@ -31,7 +34,7 @@ test showed, and where things stand now. Last updated 2026-11-05 (build **v82**,
 | ReXGlue SDK v0.10.0 | https://github.com/rexglue/rexglue-sdk (release zip `rexglue-sdk-0.10.0-linux-amd64.zip`) | Static recompiler + runtime (Xenia-derived: Xenos GPU emulation on Vulkan, kernel HLE). Patched at build time by `stage2/native/patch_sdk_vulkan_fixes.py`. Upstream issues referenced: **#441, #456, #507**. |
 | MCLA Android port (template) | https://github.com/gabrielbskk/mcla-recomp-android-g | Android build layout, SDL activity, custom GPU driver loader (`android_gpu_driver.cpp`). GPL-3.0, hence this repo's license. |
 | libadrenotools | https://github.com/bylaws/libadrenotools | Loads custom Vulkan drivers (Turnip) on Adreno. |
-| Turnip drivers tested | https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases | Gen8 V38 / V37 builds (Mesa 26.3/27.0). |
+| Turnip drivers tested | https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases | Gen8 V37 / V38 / V39 builds (Mesa 26.3/27.0). V39 used from v84 on. On the Retroid Pocket Duo (Adreno 722) the owner also tried Turnip-Duo v5.1 and mrpurple T30. |
 | Xenia Canary (consulted) | — | Has only one Table Tennis patch (title 545407DF, disables light shafts as a crash fix); not needed here. |
 | Naruto: Rise of a Ninja / The Broken Bond recomps (consulted) | https://github.com/jorjbarbosa/naruto-rise-recomp, https://github.com/jorjbarbosa/broken-bond-recomp | Same SDK. Took one setting from their SDK patches: `execute_unclipped_draw_vs_on_cpu=true` (v74 test). Their **native renderer** (hooks the game's D3D calls, draws with Vulkan directly, shaders pre-translated by XenosRecomp, no Xenos emulation) is the realistic route to 60 FPS, but it's ~50k lines, game-specific (hundreds of hooked addresses) and PC-only; porting it to Table Tennis (RAGE engine) and Android would be a multi-month project. Not started. |
 | MCLA Android port, newer version (consulted 2026-11-05) | https://github.com/gabrielbskk/mcla-recomp-android-g (`config/render_perf.toml`, `src/render_perf.cpp`) | Has the same GPU-wait spin fix as our v76 test (`mcla_fence_spin`, from LARecomp: skips the 32 `mr r31,r31` no-ops in the fence poll and uses the CPU `yield` hint). Theirs is tuned for speed (core stays busy); ours sleeps 100 µs, tuned for lower load. Also single-tile rendering (we already do this via the MSAA override) and RAGE developer switches (no shadows / blur: changes the look, not used). |
@@ -106,12 +109,19 @@ The owner exports a zip from the launcher. Key files:
   - busy threads, and per-thread SELF / GUEST / INCLUSIVE samples (`sub_XXXXXXXX`)
 - `game_hotcode.txt`: guest machine code of the hottest functions (once, at 60 s).
 - `game_cpu_threads.txt`: per-thread CPU %, CPU clocks, temperatures, **GPU busy % and clock**
-  (kgsl; with Turnip V38 it reads 99% @ 680 MHz in rallies).
+  (kgsl; Thor at v104: ~82% @ 680 MHz in rallies; not readable on the Xperia 1 V or the Retroid
+  Pocket Duo), and whole-app CPU % per sample. Archived per run in `runs/` since v86, so tests
+  can be compared for load, not just FPS. With the game capped at 60, compare **busy % × clock**.
+- `game_profile.txt` also has, since v84–v94: render passes per frame, uploads moved by F15,
+  F16 resolves skipped, F17 colour resolves copied (of all colour resolves), F18 depth resolves.
+- `game_tabletennis.log`, since v104: `tt-slow: <step> took N ms` for any pipeline creation,
+  shader translation or controller rumble call of 15 ms or more (D5).
 - `syms/`: symbol lists for host offsets.
 
-Env switches the native side still reads: `TT_PROFILE=<dir>`
-(launcher, Performance log), `TT_SETTINGS` (launcher, for the logs). All experiment switches
-were removed in v56; the history table below says what each experiment found.
+Env switches the native side still reads: `TT_PROFILE=<dir>` (launcher, Performance log),
+`TT_SETTINGS` (launcher, for the logs), `TT_DRAW_ALL_PASSES` (launcher, Hidden passes → Drawn:
+turns off F10–F12 and F15–F18), `TT_UI_FONT` (loading screen font). There's no Test row and no
+`TT_TEST` in v104; the history table below says what each experiment found.
 
 ## 5. History: what was done and what it did
 
@@ -186,6 +196,7 @@ were removed in v56; the history table below says what each experiment found.
 | **v92** | 4x path made part of F17; Test row removed. | Owner: picture looked fine. |
 | **v93** | Test row: **Direct depth resolves** (`TT_TEST=depth`): a plain depth resolve (D24S8, 1x, no offsets, one depth render target owning the area, exactly one k_24_8 texture at the destination, host format R32F) is written by a small compute shader (SPIR-V embedded in the patch; GLSL: `imageStore(dest, p, texelFetch(depth, p, 0).r)`) straight into the texture. R32F single-level 2D textures are created with STORAGE usage for this. Pipeline, pool and per-texture view/set are created lazily and never freed. Profile counts them. | Thor, V39, both runs capped at 60: Off GPU ~83.5 % @ 680 MHz; **test ~81 %**, 2.2 depth resolves per frame written directly, GPU-written texture loads 0.2 → 0.0 per frame (nothing resolved goes through guest memory any more); app CPU ~152 → ~155 %. No crash. Owner sent logs without a comment on the picture. |
 | **v94** | **F18** made permanent (under Hidden passes); Test row removed. | Owner's 5 screenshots: shadows and lighting correct. |
+| v89 on Xperia 1 V | Owner's phone, v89 build with Direct colour resolves on: 59.3–59.9 FPS per minute for 8 minutes (whole session 95 % at ~60), while the big cores throttled 2.8 → 1.4 GHz and app CPU rose 150 → 340 % of a core (same work at lower clocks). Was ~45 → 35 FPS on Nov 7 (v80s). GPU load isn't readable on this phone. | README tested-devices row updated. |
 | **v95** | Lower load, uploads (~7 MB/frame re-copied to the GPU buffer). Test row: **Skip unchanged uploads** (`TT_TEST=skipsame`: per-page XXH3 of what was last uploaded, kept in `SharedMemory::tt_page_hash_`, cleared for pages the GPU writes; a page that hashes the same is made valid without copying), **Memory watch 4 KB / 16 KB** (`watch4` / `watch16`, the v84 T2 again now that load is logged per run). Profile line: KB left out as unchanged, memory-watch faults. | Thor, V39, all at 60 FPS. Off: GPU 79.4 %, app CPU 151 %, 7.3 MB uploaded, 46 faults/frame. **Skip unchanged: 5.3 of 6.7 MB/frame was unchanged**, yet GPU 81.6 %, CPU 162 %. Watch 4 KB: 4.1 MB uploaded, texture checks gone (0.1/frame), but 410 faults/frame, GPU 83.3 %, CPU 181 %. Watch 16 KB: 5.4 MB, 189 faults, GPU 82.4 %, CPU 167 %. **None lowers load (hashing and write faults cost more than the copies they save); all removed.** Uploads are no longer worth chasing now that they don't cut passes. |
 | **v96** | Test row: **Crop pass area** (`TT_TEST=area`, the v84 T3 again: passes are now few and long, so the driver may render them in tiles, where the 1280×2048 area is loaded and stored per pass), **Crop + tiled GPU** (`areagmem`, also `TU_DEBUG=gmem`), **Untiled GPU** (`TU_DEBUG=sysmem`). | Thor, V39, all at 60 FPS: Off GPU 82.5 %; Crop 83.8 %; Crop + gmem **96.1 %** (tiling is much worse); sysmem 82.2 % (= default, so the driver already renders straight to memory). App CPU 155–158 % in all. **No gain; all removed.** |
 | **v97** | Measuring round, picture broken on purpose. Test row: **Centre only: main scene** (`TT_TEST=pix1280`: draws into 1280-wide targets clipped to the centre quarter) and **Centre only: everything** (`pixall`: every draw's scissor shrunk to its centre quarter). The GPU load left over is vertex and per-draw work. Profile: vertices per frame. | Thor, V39, all at 60 FPS. GPU work as busy % × clock: Off 83 % @ 680 MHz (564); main scene at a quarter 79 % @ 615 (486, −14 %); everything at a quarter 75.5 % @ 615 (464, −18 %). So **all pixel work is only ~20–25 % of the GPU frame**; ~350,000 vertices per frame over ~750 draws. The rest is vertex work and per-draw cost. |
@@ -194,20 +205,21 @@ were removed in v56; the history table below says what each experiment found.
 | **v100** | Measuring. Test row: **Slow image copies** (`TT_TEST=slowcopy`: each destination's F17/F18 direct copy is issued only every 8th time), because v98's 'empty' frame still contained the ~31 resolve copies. | Thor, V39, both at 60 FPS: Off 83 % @ 680 MHz (564); test ~84 % @ 615 MHz (517): **the copies are ~8 % of the GPU frame**. Removed. |
 | **v101** | Census: pipeline barriers and buffer copies per frame in the profile (on Adreno a barrier can make the GPU wait until idle). | Thor, V39, 60 FPS (98 % of a 6-minute session), GPU ~82 % @ 680 MHz, app CPU ~150 %: **114 pipeline barriers and 7 un-moved buffer copies per frame** for ~656 draws and ~67 passes. Not excessive; nothing obvious left to cut on the Xenos backend. |
 | **v102** | Census removed. **End of the 60 FPS / lower-load round** (owner happy). State: rallies 60 FPS on the Thor and the Xperia 1 V; Thor GPU ~82 % @ 680 MHz (was 99 % at ~45 FPS); app CPU ~150 % of a core. Measured split of the remaining GPU frame (v97–v100): pixels ~20–25 %, resolve copies ~8 %, the rest fixed per-draw/per-pass cost of the Xenos emulation. Further big gains need the own-renderer route (section 7). Next: Retroid Pocket Duo (Adreno 722) once logs arrive. | — |
-| **v103** | **Retroid Pocket Duo** (Dragonwing Q-7790, Adreno 722, Android 16; owner's Turnip builds: Turnip-Duo-v5.1, Gen8 V38/V39, mrpurple T30). v102: menus steady at 40 FPS (40 setting), then `GPU faulted or hung (VK_ERROR_DEVICE_LOST)` at the first serve with Turnip-Duo-v5.1 and V38. Morning v89 build (F17 off): matches ran (~20–25 FPS at the 60 setting, mrpurple 1:37 without a crash; one Turnip-Duo session lost the device after 1:21). Suspect F17/F18 on A722. Test row: **No direct copies** (`nodirect`, F17+F18 off), **No direct downsample** (`no4x`), **No direct depth** (`nodepth`). GPU busy/clock not readable on this device (SELinux). | Not run: the owner switched to the **system (Qualcomm) driver**, where v102 does not crash. |
-| **v104** | Duo on the system driver (Qualcomm 0x80320049, Vulkan 1.3.284), v102, all shortcuts active (26/26 colour and 2 depth resolves direct): **matches at ~45–52 FPS with the 60 setting** (menus 60); CPU ~283 % of a core, big core 2.8 GHz, ~72 °C. **40 FPS setting is broken there: menus 40 but matches ~22 FPS**, SDLThread 99 % of a core and '0.0 repaints/s' in the profile (presenter/F8/F14 on this driver at 120 Hz; not investigated yet). Owner reports: one strong stutter at the first serve hit of a game (log: 263 ms + 140 ms spikes at 1:00), and a black screen now and then between menus. Added **D5**: logs any pipeline creation, shader translation or rumble call of 15 ms or more ('tt-slow: … took N ms') to line up with 'tt: frame spike'. v103 Test row kept for the Turnip crash. | **Not tested yet** |
-| v89 on Xperia 1 V | Owner's phone, v89 build with Direct colour resolves on: 59.3–59.9 FPS per minute for 8 minutes (whole session 95 % at ~60), while the big cores throttled 2.8 → 1.4 GHz and app CPU rose 150 → 340 % of a core (same work at lower clocks). Was ~45 → 35 FPS on Nov 7 (v80s). GPU load isn't readable on this phone. | README tested-devices row updated. |
+| **v103** | **Retroid Pocket Duo** (Dragonwing Q-7790, Adreno 722, Android 16; owner's Turnip builds: Turnip-Duo-v5.1, Gen8 V38/V39, mrpurple T30). v102: menus steady at 40 FPS (40 setting), then `GPU faulted or hung (VK_ERROR_DEVICE_LOST)` at the first serve with Turnip-Duo-v5.1 and V38. Morning v89 build (F17 off): matches ran (~20–25 FPS at the 60 setting, mrpurple 1:37 without a crash; one Turnip-Duo session lost the device after 1:21). Suspect F17/F18 on A722. Test row: **No direct copies** (`nodirect`, F17+F18 off), **No direct downsample** (`no4x`), **No direct depth** (`nodepth`). GPU busy/clock not readable on this device (SELinux). | Not run: the owner switched to the **system (Qualcomm) driver**, where v102 does not crash. Test row removed in v104. If Turnip on Adreno 722 matters again, re-add it. |
+| **v104** | Duo on the system driver (Qualcomm 0x80320049, Vulkan 1.3.284), v102, all shortcuts active (26/26 colour and 2 depth resolves direct): **matches at ~45–52 FPS with the 60 setting** (menus 60); CPU ~283 % of a core, big core 2.8 GHz, ~72 °C. **40 FPS setting is broken there: menus 40 but matches ~22 FPS**, SDLThread 99 % of a core and '0.0 repaints/s' in the profile (presenter/F8/F14 on this driver at 120 Hz; not investigated yet). Owner reports: one strong stutter at the first serve hit of a game (log: 263 ms + 140 ms spikes at 1:00), and a black screen now and then between menus. Added **D5**: logs any pipeline creation, shader translation or rumble call of 15 ms or more ('tt-slow: … took N ms') to line up with 'tt: frame spike'. v103 Test row removed. Docs (README, DEVLOG, HANDOFF, BUILDING) brought up to date. | **Waiting for Duo logs** (first serve, two launches). |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
-vblank pacing, resolution (540p = 720p), AA/FXAA, Turnip sysmem/nobin, UI repaint rate,
+vblank pacing, resolution (540p = 720p), AA/FXAA, Turnip sysmem/nobin/gmem, UI repaint rate,
 sampler pool, EU vs US disc, the presenter's empty submits, "kicking" the GPU, the driver
-version (all Turnip builds 36–38.5).
+version (all Turnip builds 36–38.5). From v84–v101: smaller memory watch (4/16 KB), skipping
+unchanged uploads, cropped pass area, dropping copies entirely, Turnip `IR3_SHADER_DEBUG`
+nouboopt/nopreamble.
 
 ## Visual-risk changes (owner's rule: keep them easy to undo)
 
-Changes that remove or skip rendering work, verified only in one venue (red-carpet hall),
-a few opponents and exhibition rallies. Each must stay switchable or individually
+Changes that remove or skip rendering work, verified only in a couple of venues, a few
+opponents and exhibition matches. Each must stay switchable or individually
 removable, so a problem in another venue/character/mode can be checked and traced quickly.
 
 | Change | Build | What it skips | How to turn it off |
@@ -228,18 +240,27 @@ narrower condition). For anything else, `bash tools/use_version.sh <n>` builds a
 
 ## 6. Current understanding of the bottleneck
 
-State at v82, AYN Thor (Adreno 740, Turnip Gen8 V38), rallies at 720p with FXAA:
+State at v104, AYN Thor (Adreno 740, Turnip Gen8 V39), rallies at 720p, FXAA, Frame rate 60:
 
-- **The GPU is the limit**: kgsl reports it 99% busy at its top clock (680 MHz) in rallies.
-  Vulkan timestamps undercount (~13 of ~23 ms), so don't trust them for totals.
-- The work is spread thin. Halving the main pass's pixels only saved ~1.6 ms (v72); the
-  F10–F12 skips, F9 and the game-MSAA override removed the big single items. What's left is
-  Xenos emulation overhead spread over ~400 main-pass draws, ~30 resolves, ~60 texture loads,
-  ~400 uploads and ~1000 barriers per frame, plus the game's own rendering.
-- CPU: no longer a concern. The game's GPU-fence spin is now a sleep (~86% → ~21% of a core),
-  texture hashing is ~3.5 MB/frame (was 42), the GPU thread is ~30–45% of a core.
-- Presentation: since F8/F14 the screen shows every game frame (before v81 only about half).
-- At 40 FPS on the 120 Hz screen the load drops a lot (GPU thread ~25%, game main thread ~10%).
+- **60 FPS with headroom**: kgsl reports the GPU ~82% busy at 680 MHz (it was 99% at ~45 FPS
+  before v84). App CPU ~150% of a core.
+- **Where the remaining GPU time goes** (v97–v100, as busy % × clock): pixels ~20–25%, resolve
+  image copies ~8%, the rest a fixed cost per draw/pass (~660–780 draws, ~67 render passes,
+  ~114 barriers, ~170 pipeline binds, ~1,000 descriptor-set binds per frame). Vertices are few
+  (~350,000 per frame).
+- **No resolve goes through guest memory any more** (F17/F18): 26 colour and 2 depth resolves per
+  frame are direct copies; GPU-written texture loads are 0 per frame.
+- Uploads: ~6–7 MB per frame, ~80% of it unchanged bytes, but every way of avoiding the copy
+  (hashing, finer memory watch) cost more than it saved (v95).
+- CPU: not a concern on the Thor. The game's GPU-fence spin is a sleep, texture hashing ~3 MB per
+  frame, the emulator's GPU thread ~35% of a core.
+- Presentation: since F8/F14 the screen shows every game frame.
+
+**Other devices:** Xperia 1 V (same chip): ~60 FPS, keeps it while throttling. Retroid Pocket
+Duo (Adreno 722, system driver): ~45–52 FPS in matches, app CPU ~280% of a core; its 40 FPS mode
+runs matches at ~22 FPS (SDL thread at 99% of a core and '0.0 repaints/s': presenter problem on
+that driver at 120 Hz, open); one stutter at the first serve (open, D5 added); occasional black
+screen between menus (open).
 
 ### What the v84 review added
 
@@ -267,30 +288,31 @@ State at v82, AYN Thor (Adreno 740, Turnip Gen8 V38), rallies at 720p with FXAA:
 
 ## 7. Suggested next steps
 
-The owner considers the port finished at v82. If work resumes:
+The owner considers the Thor work finished (60 FPS reached). Open items, in order:
 
-0. **60 FPS reached in v89/v90** (F15–F17). For lower load from here: the same direct copy for depth resolves (D24S8 → k_24_8 texture, host R32F: needs a shader pass or a depth-to-colour copy) and for the 4x-MSAA-as-downsample colour resolves (`vkCmdResolveImage`); then: direct resolve → texture copy; ADPF performance hints (lets Android lower clocks when
-   frames are easy; the NFS Carbon port uses it); the upstream fix `cf75b896` (vertex buffers
-   bound at an unchanged address are never asked for again in v0.10.0).
-0. **An own PM4-level renderer** (the NFS Carbon route) is the proven way to a locked 60 with
-   headroom on this SDK: no game hooks, ~9–10k lines, replaces `rexgpu-xenos` through the
-   `gpu_plugin` seam, Xenos backend kept as a fallback. Several weeks of test builds, since
-   nothing can be run without the owner's device.
-1. **A native (high-level) renderer** is the realistic way to a fixed 60 FPS: hook the game's
-   D3D calls and draw with Vulkan directly, shaders pre-translated, no Xenos emulation. See the
-   Naruto recomps in section 2. Multi-month: Table Tennis is RAGE-engine, and the reference is
-   PC-only.
-2. Smaller, still open: RAGE developer switches like the MCLA port's `perf_options` (visual
-   changes, so owner's call); fewer barriers or texture invalidations inside the SDK (low
-   expected gain per v49–v50).
-3. Re-check the visual-risk table (F10–F12) whenever a new venue, character or mode looks wrong:
+1. **Retroid Pocket Duo:** find the first-serve stutter from the D5 log lines (shader or pipeline
+   build, or the controller's first rumble); the 40 FPS mode (presenter on the Qualcomm driver at
+   120 Hz); the occasional black screen between menus. If Turnip on Adreno 722 matters, re-add
+   v103's test (F17 / F17-4x / F18 switches) to find which one faults.
+2. **Flicker when the game is interrupted** (rotation, notification shade, other apps): owner says
+   it doesn't affect play. Probably swapchain recreation; capture logs right after it happens.
+3. **Lower load further on the Xenos backend:** little left (section 6). Candidates: ADPF
+   performance hints (lets Android lower clocks when frames are easy; the NFS Carbon port uses
+   it); upstream fix `cf75b896` (vertex buffers at an unchanged address are never re-requested
+   in v0.10.0).
+4. **An own PM4-level renderer** (the NFS Carbon route) is the proven way to large further gains
+   on this SDK: no game hooks, ~9–10k lines, replaces `rexgpu-xenos` through the `gpu_plugin`
+   seam, Xenos backend kept as a fallback. Several weeks of test builds, since nothing can be run
+   without the owner's devices. A high-level renderer like the Naruto recomps' (hooking the
+   game's D3D calls) would be multi-month.
+5. Re-check the visual-risk table whenever a new venue, character or mode looks wrong:
    Hidden passes → Drawn.
 
 ### Pinned / decided
 - **Shadows / pass B**: keep the shadows (owner). Real shadows are shaders `f895` + `8cc4`
   (~7 draws); the background is mostly `a452`. All of pass B is only ~+0.7 FPS.
 - **Turnip sysmem**: within noise in three measurements; not added.
-- **AA Off** = +1.3 FPS; stays a launcher choice (owner).
+- **AA Off** = +1.3 FPS before 60 was reached (now no visible difference at 60); stays a launcher choice (owner).
 - **40 FPS**: done (Frame rate option, asks for 120 Hz).
 - **Frame pacing** from the PC version: done (v78).
 
@@ -313,8 +335,9 @@ The owner considers the port finished at v82. If work resumes:
 
 - Give one command per build (`git pull && bash stage2/tt_android_stage2.sh`) and a short,
   concrete test: which launcher settings, ~2 minutes of rallies, export logs, report the FPS.
-- Baseline settings for comparisons (v54 launcher): **GPU driver Turnip Gen8 V38, 720p, FXAA,
-  60 FPS, Shaders Wait, Performance log On.** (Game MSAA is always off since v59.) Retired
+- Baseline settings for comparisons: **GPU driver Turnip Gen8 V39 (Thor) / System (Retroid
+  Pocket Duo), 720p, FXAA, 60 FPS, Shaders Wait, Hidden passes Skipped, Performance log On.**
+  At a capped 60 FPS compare GPU busy % × clock and app CPU %, not FPS. (Game MSAA is always off since v59.) Retired
   options are still env toggles natively (TU_DEBUG, TT_FRAMES_IN_FLIGHT, TT_UI_HZ, ...) but
   no longer in the launcher. Keep the launcher lean: remove test rows once a test is done.
 - Menu stutter on page changes is shader compilation. The cache persists across builds

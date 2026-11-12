@@ -23,29 +23,32 @@ FIXES (each measured to help; see HANDOFF.md for the history)
   F13       stereo sound mix by the SDK instead of Android's 5.1 downmix, rear (echo)
             channels at 0.25 (clearer, drier ball hits)
   F14       screen repainted once per new game frame (no repeated repaints)
-  (F10-F12 are switched off together by TT_DRAW_ALL_PASSES=1: launcher "Hidden passes")
+  F15       uploads recorded in front of the open render pass instead of ending and
+            restarting it (render passes 256 -> 68 per frame)                    ~46->52 FPS
+  F16       resolves of the two depth buffers F10 leaves empty: done 4 times per
+            destination, then skipped                                            ~52->55 FPS
+  F17       plain colour resolves become one image copy render target -> host texture
+            (4x sources averaged by vkCmdResolveImage); the texture is sampled through
+            a red/blue-swapped view; guest memory at the destination is not written
+                                                     ~55->60 FPS, then GPU 96 -> 86 % at 60
+  F18       plain depth resolves written straight into the host texture by a small
+            compute shader (SPIR-V embedded below)                     GPU 83.5 -> 81 % at 60
+  (F10-F12 and F15-F18 are all switched off by TT_DRAW_ALL_PASSES=1: launcher
+   "Hidden passes -> Drawn")
+  Measured on the AYN Thor, Turnip Gen8 V38/V39, 720p, FXAA, 60 FPS setting, rallies.
 
 DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   D1  tt_frame_stats  [0] guest vblanks [1] CP wait-for-memory sleeps [2] their ns [3] swaps
   D2  tt_work_stats   [0] draws [1] resolves [2] texture loads [3] texture bytes
                       [6] upload calls [7] upload bytes [8] draws skipped by F10/F11
+                      [9] render passes begun [10] uploads moved by F15 [11] uploads that
+                      still ended a pass [12] F18 depth resolves [13] F16 resolves skipped
+                      [14] F17 colour resolves copied [15] colour resolves
   D3  tt_tex_stats    [0] texture loads asked [1] skipped (unchanged) [2] GPU-written
                       [3] bytes hashed
   D4  tt_present_stats [0] new game images [1] screen paints (F14)
-
-  F15 uploads recorded in front of the open render pass instead of cutting it (v84: render
-      passes 256 -> 68 per frame, ~46 -> ~52 FPS). Off with TT_DRAW_ALL_PASSES.
-      tt_work_stats [9] passes begun [10] uploads moved [11] uploads that cut the pass
-  F17 plain colour resolves become one vkCmdCopyImage render target -> host texture; guest
-      memory is not written; the texture is sampled through an R/B-swapped view (v89: ~13
-      per frame, 60 FPS capped with GPU headroom). 4x sources averaged to 1x go through
-      vkCmdResolveImage (v91: all 26 colour resolves direct, GPU ~96 % -> ~86 % at 60 FPS). Off with TT_DRAW_ALL_PASSES. [14] counts.
-  F18 plain depth resolves (D24S8 -> k_24_8 texture, host R32F) written straight into the
-      texture by a small compute shader (v93: ~2 per frame, GPU ~83.5 % -> ~81 % at 60 FPS;
-      no resolved texture goes through guest memory any more). Off with TT_DRAW_ALL_PASSES.
-      tt_work_stats[12] counts them.
-  F16 resolves of the two depth buffers F10 leaves empty are done 4 times, then skipped
-      (v87: 51.9 -> 55.5 FPS). Off with TT_DRAW_ALL_PASSES. tt_work_stats[13] counts them.
+  D5  "tt-slow: <step> took N ms" log lines for pipeline creation, shader translation and
+      controller rumble calls of 15 ms or more (Retroid Pocket Duo first-serve stutter)
 """
 import re
 import sys
@@ -1047,8 +1050,7 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n"), (
     "  // Copying.\n  bool copied = false;\n",
     "  // tt-android F17: plain colour resolve -> one image copy into the host texture.\n"
-    "  static const bool tt_direct = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr &&\n"
-    "                                !TtTestIs(\"nodirect\");  // test v103\n"
+    "  static const bool tt_direct = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
     "  if (tt_direct && resolve_info.copy_dest_extent_length && !resolve_info.IsCopyingDepth() &&\n"
     "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
     "    const draw_util::ResolveEdramInfo e = resolve_info.color_edram_info;\n"
@@ -1057,8 +1059,7 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "    const draw_util::ResolveCopyDestCoordinateInfo dc = resolve_info.copy_dest_coordinate_info;\n"
     "    // A 4x render target resolved with all four samples averaged (the game's 2x2\n"
     "    // downsample) goes through vkCmdResolveImage the same way (v91).\n"
-    "    const bool tt_4x = !TtTestIs(\"no4x\") &&  // test v103\n"
-    "                       e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
+    "    const bool tt_4x = e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
     "                       resolve_info.rb_copy_control.copy_sample_select ==\n"
     "                           xenos::CopySampleSelect::k0123;\n"
     "    if (!resolve_info.IsCopyingDepth()) {\n"
@@ -1117,8 +1118,7 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  }\n"
     "  // tt-android F18: plain depth resolve (D24S8, no MSAA) -> the R32F\n"
     "  // host texture, written by a small compute shader that reads the host depth target.\n"
-    "  static const bool tt_depth = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr &&\n"
-    "                               !TtTestIs(\"nodirect\") && !TtTestIs(\"nodepth\");  // test v103\n"
+    "  static const bool tt_depth = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
     "  if (tt_depth && resolve_info.copy_dest_extent_length && resolve_info.IsCopyingDepth() &&\n"
     "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
     "    static const uint32_t tt_depth_copy_cs[] = {\n"
@@ -1333,20 +1333,6 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  // Copying.\n  bool copied = false;\n"))
 done.append("F17 colour resolves as one direct image copy")
 
-
-# ============================================================ TESTS (v103, temporary)
-# Retroid Pocket Duo (Adreno 722): v102 loses the GPU ("faulted or hung") at the first serve;
-# v89 (no F17/F18) played a match. Test row: nodirect (F17+F18 off), no4x (F17's
-# vkCmdResolveImage path off), nodepth (F18 off).
-edit("src/graphics/vulkan/render_target_cache.cpp", (
-    "  // Nothing to copy/clear.\n",
-    "  // Nothing to copy/clear.\n"),
-    prelude="// tt-android test (v103): the launcher's Test row.\n"
-            "static bool TtTestIs(const char* name) {\n"
-            "  const char* test = std::getenv(\"TT_TEST\");\n"
-            "  return test && !std::strcmp(test, name);\n"
-            "}\n",
-    includes=("#include <cstdlib>", "#include <cstring>"))
 
 # ---- D5 (v104, temporary): what stalls a frame? Logs any single pipeline creation, shader
 #      translation or controller rumble call that takes 15 ms or longer, with its duration,
