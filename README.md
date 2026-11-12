@@ -43,8 +43,8 @@ This project was built with AI, and I want to be completely clear about that.
 
 **I'm not a programmer.** Nearly all of the code in this repository was written by
 [Claude](https://www.anthropic.com/claude), an AI model made by Anthropic. Over about two weeks
-(late October to mid-November 2026) Claude went from an empty repository to build v104, across
-more than 130 commits. Every one of those commits is authored by Claude, so the history shows
+(late October to mid-November 2026) Claude went from an empty repository to build v108, across
+more than 140 commits. Every one of those commits is authored by Claude, so the history shows
 exactly what it wrote and when.
 
 ### What Claude did
@@ -62,7 +62,7 @@ exactly what it wrote and when.
   [docs/DEVLOG.md](docs/DEVLOG.md), [HANDOFF.md](HANDOFF.md), and the licensing notices.
 
 ### The full development log
-Every testing round, from the first fixes through v104, is written up in
+Every testing round, from the first fixes through v108, is written up in
 **[docs/DEVLOG.md](docs/DEVLOG.md)**. For each round it covers what we tried, what the logs
 showed, what we concluded, and what changed, plus a list of the ideas that didn't help and the
 measurements behind each one.
@@ -90,16 +90,15 @@ measurements behind each one.
 
 **Playable, and at a steady 60 FPS on the AYN Thor.** All numbers below come from the app's own
 logs during exhibition matches, on the current build unless a row names an older one. Settings
-not listed in a row were **720p, Shaders: Wait, Hidden passes: Skipped**.
+not listed in a row were **720p and Hidden passes: Skipped**; the game runs capped at 60 FPS.
 
 ### Tested devices
 
 | Device | Chip (GPU) | GPU driver | Other settings | Result |
 |---|---|---|---|---|
-| **AYN Thor** (reference) | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | FXAA, Frame rate 60 | **60 FPS** in rallies (98% of a 6-minute session); menus 60. Graphics chip ~82% busy at 680 MHz. |
-| **AYN Thor** | same | Turnip Gen8 V38 | FXAA, Frame rate **40** (build v79) | Steady 40 FPS on the 120 Hz screen, at a much lower load (emulator GPU thread ~25% of a CPU core instead of ~31% at Frame rate 60). Not re-measured since the v85–v94 speed-ups, which only lower it further. |
-| **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | AA Off, Frame rate 60 (build v89) | **~60 FPS** over an 8-minute session (95% of it at 60), even after the phone lowered its CPU clock to stay cool (2.8 → 1.4 GHz). Some menu flicker. Needs a controller. |
-| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | **System (Qualcomm)** | FXAA, Frame rate 60 | **~45–52 FPS** in matches; menus 60. A short pause (~0.3 s) as each match starts, as on the Thor; the first launch also stutters while graphics programs are prepared and saved. With Frame rate 40, matches drop to ~22 FPS (use 60). With the current build, the Turnip drivers tried (Turnip-Duo v5.1, Gen8 V38) crash at the first serve; an older build ran on Turnip at only ~20–25 FPS. |
+| **AYN Thor** (reference) | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | FXAA | **60 FPS** in rallies (98% of a 6-minute session); menus 60. Graphics chip ~82% busy at 680 MHz. |
+| **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | AA Off (build v89) | **~60 FPS** over an 8-minute session (95% of it at 60), even after the phone lowered its CPU clock to stay cool (2.8 → 1.4 GHz). Some menu flicker. Needs a controller. |
+| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | **System (Qualcomm)** | FXAA | **~45–52 FPS** in matches; menus 60. A short pause (~0.3 s) as each match starts, as on the Thor; the first launch also stutters while graphics programs are prepared and saved. With the current build, the Turnip drivers tried (Turnip-Duo v5.1, Gen8 V38) crash at the first serve; an older build ran on Turnip at only ~20–25 FPS. |
 | Xiaomi Mi Mix 3 | Snapdragon 845 (Adreno 630) | — | — | Not tested. Installs (Android 10), but much less powerful; expect it to be too slow. |
 
 Other Android devices with a recent Adreno GPU may work; reports are welcome (see
@@ -197,8 +196,6 @@ If a stage fails, it says so and leaves a log zip (`~/tt-android/tt-stage1-logs.
 |---|---|---|
 | Resolution | **720p** | The game's native resolution |
 | Anti-aliasing | **FXAA** | The Thor holds 60 FPS with FXAA on. *Off* shows more jagged edges and saves a little GPU work |
-| Frame rate | **60 FPS** | The game's own rate. *40* for lower load and heat on 120 Hz screens (not on the Retroid Pocket Duo, see below) |
-| Shaders | **Wait** | No missing objects; brief stutter on new screens only |
 | GPU driver | **Snapdragon 8 Gen 2:** Turnip Gen8 V39 (V38 also fine) · **other chips:** System | Turnip builds from [StevenMXZ/Adreno-Tools-Drivers](https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases). On the Retroid Pocket Duo (Adreno 722) the Turnip builds tried crash with the current build; its system driver works and is faster |
 | Hidden passes | **Skipped (faster)** | Switch to *Drawn* if something looks wrong (see below) |
 | Performance log | Off for normal play, **On** when reporting a problem | |
@@ -206,20 +203,20 @@ If a stage fails, it says so and leaves a log zip (`~/tt-android/tt-stage1-logs.
 ## Settings guide
 
 What each option does. Frame rates are from the AYN Thor during rallies, compared with the
-recommended settings (720p, FXAA, Frame rate 60, Turnip Gen8 V39, Hidden passes Skipped):
+recommended settings (720p, FXAA, Turnip Gen8 V39, Hidden passes Skipped):
 
 | Setting | Options | Effect on playability and frame rate |
 |---|---|---|
 | **Resolution** | 720p · 1440p (2×) | 1440p renders at twice the width and height: sharper, but much heavier, so expect a large FPS drop. |
 | **Anti-aliasing** | Off · FXAA · FXAA (extreme) | Edge smoothing applied to the final image. Before the game reached 60 on the Thor, *Off* was worth about +1.3 FPS (not re-measured since). *Extreme* is smoother and a little heavier than FXAA. |
-| **Frame rate** | 60 FPS · 40 FPS · 30 FPS · Uncapped | **60** is the game's own rate (a steady 60 on the Thor). **40** holds a steady 40 and switches the screen to 120 Hz, where every frame is shown for exactly the same time; it needs a 120 Hz screen and lowers load and heat. On the Retroid Pocket Duo it currently slows matches to ~22 FPS, so use 60 there. **30** caps at 30 for the lowest load. *Uncapped* is for testing only. |
 | **Show FPS** | Off · On | Small FPS counter in the corner. No real cost. |
-| **Shaders** | Async · Wait | *Wait*: everything is drawn correctly, with a brief stutter the first time a screen appears. *Async*: fewer stutters, but objects can pop in for a moment. |
 | **GPU driver** | System · imported drivers | On the Thor, Turnip Gen8 V38/V39 are the fastest; Qualcomm's own driver measured much slower there in early builds (~25 FPS) with graphical errors. On the Retroid Pocket Duo it's the other way round: the system driver is the one that works (the Turnip builds tried crash at the first serve). |
 | **Hidden passes** | Skipped · Drawn | *Skipped* leaves out rendering work that had no visible effect in testing and copies finished images straight into textures. Over several builds these shortcuts took Thor rallies from around 40 FPS to 60 (not measured as one on/off comparison); *Drawn* turns them all off. It was checked in a few venues and modes only, so if anything looks wrong, set **Drawn** and compare, and please report it. |
 | **Performance log** | Off · On | Records a performance profile for problem reports. Leave it off for normal play. |
 
-Always on (not settings): single-sample rendering instead of the game's 4× MSAA (the biggest single
+Always on (not settings): the game's own 60 FPS cap (on a 60 Hz screen mode where the device has
+one), graphics programs prepared completely before first use (no missing objects; they're saved,
+so only a device's first launch stutters), single-sample rendering instead of the game's 4× MSAA (the biggest single
 speed-up), a calmer wait for the graphics chip (the game no longer keeps a CPU core spinning, which
 lowers CPU load and heat), a stereo sound mix made for the device's speakers (clearer hits), every game frame shown on
 screen, and a set of emulator fixes listed at the top of
@@ -239,8 +236,9 @@ The game uses a controller, mapped like an Xbox 360 pad. Extra shortcuts while p
 
 - **60 FPS needs Hidden passes: Skipped** (the default) and a chip like the Thor's. Slower chips
   run below 60 (Retroid Pocket Duo: ~45–52 FPS in matches).
-- **Brief stutters the first time each screen loads** (shader preparation; cached afterwards).
-- **Retroid Pocket Duo:** use the system driver and Frame rate 60. The first launch stutters
+- **Brief stutters the first time each screen loads on a new device** (graphics programs being
+  prepared; they're saved, so later launches don't repeat them).
+- **Retroid Pocket Duo:** use the system driver. The first launch stutters
   while the driver prepares graphics programs; they're saved, so later launches are smooth apart
   from a short pause as each match loads. The screen sometimes stays black when the main menu
   appears; this is being looked into.

@@ -77,7 +77,7 @@ public final class GameActivity extends SDLActivity {
             Log.w(TAG, "could not write sessions.txt", e);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        chooseScreenRefresh(Settings.FPS_VALUES[settings.fps]);
+        chooseScreenRefresh(Settings.FPS);
         super.onCreate(savedInstanceState);
         if (settings.perfLog) {
             GameFiles.logsDir(this).mkdirs();
@@ -95,8 +95,8 @@ public final class GameActivity extends SDLActivity {
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
-    /** 40 FPS only looks even on a 120 Hz screen (each frame shown for exactly 3 refreshes), so
-     *  ask for the screen's 120 Hz mode then; 30 and 60 FPS get a 60 Hz mode. Logged either way. */
+    /** The game runs at 60 FPS, so ask for the screen's 60 Hz mode where there is one (each frame
+     *  then stays on screen for exactly one refresh). Logged either way. */
     private void chooseScreenRefresh(int fps) {
         android.view.Display display = getWindowManager().getDefaultDisplay();
         android.view.Display.Mode current = display.getMode();
@@ -108,8 +108,7 @@ public final class GameActivity extends SDLActivity {
             if (m.getPhysicalWidth() != current.getPhysicalWidth()
                     || m.getPhysicalHeight() != current.getPhysicalHeight()) continue;
             float hz = m.getRefreshRate();
-            boolean fits = fps == 40 ? Math.abs(hz - 120f) < 1f
-                    : (fps == 60 || fps == 30) && Math.abs(hz - 60f) < 1f;
+            boolean fits = Math.abs(hz - fps) < 1f;
             if (fits) best = m;
         }
         Log.i(TAG, "Screen modes:" + modes + "; current " + current.getRefreshRate() + " Hz; for "

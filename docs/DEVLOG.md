@@ -422,10 +422,18 @@ went from ~45 to ~35 FPS).
   ~20–25 FPS.
 - **System (Qualcomm) driver, v102, 720p, FXAA, Frame rate 60:** **~45–52 FPS in matches**,
   menus 60, app CPU ~280% of a core at ~72 °C.
-- **Frame rate 40:** menus 40, but matches only ~22 FPS, and the profile showed the screen not
-  being repainted normally. Not investigated yet; use 60 there.
+- **Frame rate 40:** menus 40, but matches only ~22 FPS.
 - Henry also noticed one strong stutter at the first serve of a match (two stalls of ~260 and
   ~140 ms in the log) and an occasional black screen between menus.
+- **v105–v107: the stutters.** The emulator never asked the driver to keep its prepared
+  graphics programs between launches; Turnip keeps them anyway, Qualcomm's driver doesn't. With a
+  saved pipeline cache (**F19**), slow program builds went from 92 on the first launch to 1, 1 and
+  4, then 0, and the multi-second freezes were gone. A ~0.3 s pause as each match starts remains;
+  the emulator accounts for only ~0.05 s of it, and the Thor shows similar pauses, so it's the
+  game loading the match.
+- **v108:** with the Thor at 60 and the Duo near 50, Henry removed the Frame rate options (40 FPS
+  had only been useful in the high-30s days, and 30 is unplayable) and the Shaders option (always
+  Wait). The game is now always capped at 60.
 - **v104** adds a log line for any shader build, pipeline creation or controller rumble call
   that takes 15 ms or more, to find the first-serve stutter.
 

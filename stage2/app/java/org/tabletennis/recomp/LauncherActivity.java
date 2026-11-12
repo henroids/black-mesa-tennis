@@ -96,9 +96,8 @@ public final class LauncherActivity extends Activity {
     }
 
     // Boxed settings so Choice rows can edit them in place.
-    private final int[] resolution = new int[1], aa = new int[1], fps = new int[1],
-            showFps = new int[1], driver = new int[1], shaderMode = new int[1],
-            perfLog = new int[1], hiddenPasses = new int[1];
+    private final int[] resolution = new int[1], aa = new int[1], showFps = new int[1],
+            driver = new int[1], perfLog = new int[1], hiddenPasses = new int[1];
     private List<String> driverIds = new ArrayList<>();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -113,9 +112,7 @@ public final class LauncherActivity extends Activity {
         }
         resolution[0] = settings.resolution;
         aa[0] = settings.aa;
-        fps[0] = settings.fps;
         showFps[0] = settings.showFps ? 1 : 0;
-        shaderMode[0] = settings.shaderMode;
         perfLog[0] = settings.perfLog ? 1 : 0;
         hiddenPasses[0] = settings.hiddenPasses;
         loadDrivers();
@@ -165,9 +162,7 @@ public final class LauncherActivity extends Activity {
         Runnable save = this::saveSettings;
         rows.add(new Choice("Resolution", new String[]{"720p", "1440p (2x)"}, resolution, save));
         rows.add(new Choice("Anti-aliasing", new String[]{"Off", "FXAA", "FXAA extreme"}, aa, save));
-        rows.add(new Choice("Frame rate", Settings.FPS_SHORT, fps, save));
         rows.add(new Choice("Show FPS", new String[]{"Off", "On"}, showFps, save));
-        rows.add(new Choice("Shaders", new String[]{"Async (may pop in)", "Wait (complete)"}, shaderMode, save));
         rows.add(new Row("GPU driver") {
             @Override String value() { return driverLabel(driverIds.get(driver[0])); }
             @Override boolean changeable() { return true; }
@@ -201,9 +196,7 @@ public final class LauncherActivity extends Activity {
     private void saveSettings() {
         settings.resolution = resolution[0];
         settings.aa = aa[0];
-        settings.fps = fps[0];
         settings.showFps = showFps[0] == 1;
-        settings.shaderMode = shaderMode[0];
         settings.perfLog = perfLog[0] == 1;
         settings.hiddenPasses = hiddenPasses[0];
         settings.save(this);

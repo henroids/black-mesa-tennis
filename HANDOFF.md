@@ -2,7 +2,7 @@
 
 This is a briefing for an AI assistant (or developer) picking up this project. It covers
 the goal, how the build works, every reference project, what has been tried, what each
-test showed, and where things stand now. Last updated 2026-11-12 (build **v104**).
+test showed, and where things stand now. Last updated 2026-11-13 (build **v108**).
 
 ---
 
@@ -11,7 +11,7 @@ test showed, and where things stand now. Last updated 2026-11-12 (build **v104**
 - **Goal:** a native Android ARM64 APK of *Rockstar Games presents Table Tennis* (Xbox 360)
   that runs at a **steady 60 FPS during gameplay** on an **AYN Thor**
   (Snapdragon 8 Gen 2, **Adreno 740**, Android 13, KGSL kernel driver).
-- **Current result (v104):** **steady 60 FPS in rallies** on the Thor (720p, FXAA, Frame rate 60,
+- **Current result (v108):** **steady 60 FPS in rallies** on the Thor (720p, FXAA, 60 FPS cap,
   Turnip Gen8 V39, Hidden passes Skipped), graphics chip ~82% busy at 680 MHz, app CPU ~150% of
   a core. Also ~60 FPS on a Sony Xperia 1 V; ~45–52 FPS on a Retroid Pocket Duo (Adreno 722,
   system driver). See section 6.
@@ -121,7 +121,7 @@ The owner exports a zip from the launcher. Key files:
 Env switches the native side still reads: `TT_PROFILE=<dir>` (launcher, Performance log),
 `TT_SETTINGS` (launcher, for the logs), `TT_DRAW_ALL_PASSES` (launcher, Hidden passes → Drawn:
 turns off F10–F12 and F15–F18), `TT_UI_FONT` (loading screen font). There's no Test row and no
-`TT_TEST` in v104; the history table below says what each experiment found.
+`TT_TEST` (v108); the history table below says what each experiment found.
 
 ## 5. History: what was done and what it did
 
@@ -210,6 +210,7 @@ turns off F10–F12 and F15–F18), `TT_UI_FONT` (loading screen font). There's 
 | **v105** | **F19**: persistent VkPipelineCache (`shaders/tt_vk_pipeline_cache.bin` next to the SDK's shader storage; loaded at shader-storage init, written every 16 new pipelines or 15 s and at shutdown; 'tt: pipeline cache ready (N KB loaded)' in the log). D5 now logs to the core category. | Duo, system driver, AA Off, 60, Shaders Wait. Launch 1 (empty cache): **92 slow pipeline creations** (up to ~490 ms each), stalls up to 4.6 s at 0:18 and 2.1 s at 0:46. Launch 2 (2,763 KB loaded): **12 slow creations** (max 272 ms), largest stall 0.8 s at 0:57 (first serve area); rallies 60 in menus, ~44–50 FPS in the match. The remaining ones are probably pipelines made in the last seconds of launch 1 that were never written (save only every 16 pipelines / 15 s, and Android kills the app without a shutdown). |
 | **v106** | F19 also saves from a background thread within 3 s of any new pipeline. | Duo, same settings, three launches: cache 3,017 → 3,031 → 3,043 KB; slow pipeline creations **1, 1, 4** (92 on an empty cache); worst stall 0.3 s / 0.3 s / 1.6 s (the last one 3 new pipelines, ~1.3 s). Remaining at every launch, with no pipeline or shader work logged: ~0.68 s at 0:00, ~0.55 s at 0:10–0:15 (loading), and **~0.3 s right as the match starts (60 → ~40 FPS)**: the first-serve stutter. |
 | **v107** | D5 also times texture requests, memory uploads and whole draws (≥ 15 ms), to see whether the ~0.3 s match-start stall is in the emulator's draw path at all. | Duo, same settings: cache 3,218 KB, **no slow pipeline creation at all**. Match start (0:37): one texture request of 49 ms inside a 387 ms stall, so ~85 % of it is outside the emulator's draw path: the game loading the match (the Thor shows 0.3–2 s spikes at match start too). Not pursued. Black screen (owner's screenshot: overlay 'FPS: 0.0' in red, i.e. the game stopped presenting) in a second session: game frames stopped ~0:07, right after 'Startup Flash state 3' (main menu), while the game thread kept running; logs were exported ~3 s later, too short for the 10-s profile. Same startup sequence in every good session. Open: needs a capture that waits ~15 s on the black screen. |
+| **v108** | Launcher: **Frame rate** (60/40/30/Uncapped) and **Shaders** (Async/Wait) rows removed (owner): always `--framerate=60` (60 Hz screen mode where available) and `--async_shader_compilation=false`. Hidden passes kept under its name (owner: a 'shortcuts' label would invite turning it off). | — |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -243,7 +244,7 @@ narrower condition). For anything else, `bash tools/use_version.sh <n>` builds a
 
 ## 6. Current understanding of the bottleneck
 
-State at v104, AYN Thor (Adreno 740, Turnip Gen8 V39), rallies at 720p, FXAA, Frame rate 60:
+State at v108, AYN Thor (Adreno 740, Turnip Gen8 V39), rallies at 720p, FXAA, 60 FPS cap:
 
 - **60 FPS with headroom**: kgsl reports the GPU ~82% busy at 680 MHz (it was 99% at ~45 FPS
   before v84). App CPU ~150% of a core.
@@ -260,9 +261,8 @@ State at v104, AYN Thor (Adreno 740, Turnip Gen8 V39), rallies at 720p, FXAA, Fr
 - Presentation: since F8/F14 the screen shows every game frame.
 
 **Other devices:** Xperia 1 V (same chip): ~60 FPS, keeps it while throttling. Retroid Pocket
-Duo (Adreno 722, system driver): ~45–52 FPS in matches, app CPU ~280% of a core; its 40 FPS mode
-runs matches at ~22 FPS (SDL thread at 99% of a core and '0.0 repaints/s': presenter problem on
-that driver at 120 Hz, open); one stutter at the first serve (open, D5 added); occasional black
+Duo (Adreno 722, system driver): ~45–52 FPS in matches (average 46.6), app CPU ~280% of a
+core (its 40 FPS mode ran matches at ~22 FPS; the option was removed in v108); first-serve stutter fixed by F19 apart from the game's own match loading; occasional black
 screen between menus (open).
 
 ### What the v84 review added
@@ -293,9 +293,10 @@ screen between menus (open).
 
 The owner considers the Thor work finished (60 FPS reached). Open items, in order:
 
-1. **Retroid Pocket Duo:** find the first-serve stutter from the D5 log lines (shader or pipeline
-   build, or the controller's first rumble); the 40 FPS mode (presenter on the Qualcomm driver at
-   120 Hz); the occasional black screen between menus. If Turnip on Adreno 722 matters, re-add
+1. **Retroid Pocket Duo:** the occasional black screen as the main menu appears (game stops
+   presenting; needs a capture that waits ~15 s); whether its limit is the GPU or the emulator's
+   GPU-command thread (83% of a core there vs ~35% on the Thor). The first-serve stutter was
+   pipeline creation (fixed by F19) plus the game's own match loading (also on the Thor). If Turnip on Adreno 722 matters, re-add
    v103's test (F17 / F17-4x / F18 switches) to find which one faults.
 2. **Flicker when the game is interrupted** (rotation, notification shade, other apps): owner says
    it doesn't affect play. Probably swapchain recreation; capture logs right after it happens.
@@ -316,7 +317,9 @@ The owner considers the Thor work finished (60 FPS reached). Open items, in orde
   (~7 draws); the background is mostly `a452`. All of pass B is only ~+0.7 FPS.
 - **Turnip sysmem**: within noise in three measurements; not added.
 - **AA Off** = +1.3 FPS before 60 was reached (now no visible difference at 60); stays a launcher choice (owner).
-- **40 FPS**: done (Frame rate option, asks for 120 Hz).
+- **Frame rate and Shaders rows removed (v108, owner):** the game is always capped at 60 (60 Hz
+  screen mode where available) and always uses Shaders: Wait. 40 FPS was only useful while the
+  Thor ran in the high 30s; 30 is unplayable; Async is pointless with the F19 pipeline cache.
 - **Frame pacing** from the PC version: done (v78).
 
 ## 8. Communication notes for the owner
@@ -339,10 +342,11 @@ The owner considers the Thor work finished (60 FPS reached). Open items, in orde
 - Give one command per build (`git pull && bash stage2/tt_android_stage2.sh`) and a short,
   concrete test: which launcher settings, ~2 minutes of rallies, export logs, report the FPS.
 - Baseline settings for comparisons: **GPU driver Turnip Gen8 V39 (Thor) / System (Retroid
-  Pocket Duo), 720p, FXAA, 60 FPS, Shaders Wait, Hidden passes Skipped, Performance log On.**
+  Pocket Duo), 720p, FXAA, Hidden passes Skipped, Performance log On** (60 FPS cap and Shaders
+  Wait are fixed since v108).
   At a capped 60 FPS compare GPU busy % × clock and app CPU %, not FPS. (Game MSAA is always off since v59.) Retired
   options are still env toggles natively (TU_DEBUG, TT_FRAMES_IN_FLIGHT, TT_UI_HZ, ...) but
   no longer in the launcher. Keep the launcher lean: remove test rows once a test is done.
 - Menu stutter on page changes is shader compilation. The cache persists across builds
   (`SHADER_CACHE_VERSION` in `LauncherActivity.java` clears it only when changed).
-  "Shaders: Async" would hide it at the cost of pop-in.
+  Since F19 (v105) compiled pipelines are also saved, so only a device's first launch stutters.
