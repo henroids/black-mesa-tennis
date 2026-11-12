@@ -1330,4 +1330,85 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  // Copying.\n  bool copied = false;\n"))
 done.append("F17 colour resolves as one direct image copy")
 
+
+# ============================================================ TESTS (v95, temporary)
+# ~7 MB of guest memory is copied to the GPU buffer again every frame. Launcher Test row:
+#   TT_TEST=skipsame  a page whose bytes hash the same as when it was last uploaded is not
+#                     uploaded again (per-page XXH3; forgotten when the GPU writes the page)
+#   TT_TEST=watch4 / watch16  a CPU write invalidates 4 / 16 KB around it instead of 256 KB
+# tt_work_stats [4] bytes not uploaded because unchanged  [5] memory-watch invalidations
+edit("include/rex/graphics/shared_memory.h", (
+    "  std::vector<uint32_t> tt_page_generation_;\n",
+    "  std::vector<uint64_t> tt_page_hash_;  // test v95: 0 = not known\n"
+    "  std::vector<uint32_t> tt_page_generation_;\n"))
+edit("src/graphics/shared_memory.cpp", (
+    "  // Trigger modification callbacks so, for instance, resolved data is loaded to\n"
+    "  // the texture.\n"
+    "  FireWatches(page_first, page_last, true);\n",
+    "  for (uint32_t i = page_first; i <= page_last && i < tt_page_hash_.size(); ++i) {\n"
+    "    tt_page_hash_[i] = 0;  // tt-android test (v95): the GPU copy no longer matches\n"
+    "  }\n"
+    "  // Trigger modification callbacks so, for instance, resolved data is loaded to\n"
+    "  // the texture.\n"
+    "  FireWatches(page_first, page_last, true);\n"), (
+    "  auto global_lock = global_critical_region_.Acquire();\n\n  if (!exact_range) {\n",
+    "  auto global_lock = global_critical_region_.Acquire();\n"
+    "\n"
+    "  const uint32_t tt_page_first = page_first, tt_page_last = page_last;  // test v95\n"
+    "  if (!exact_range) {\n"
+    "    __atomic_fetch_add(&tt_work_stats[5], 1, __ATOMIC_RELAXED);\n"), (
+    "  for (uint32_t i = block_first; i <= block_last; ++i) {\n"
+    "    uint64_t invalidate_bits = UINT64_MAX;\n",
+    "  {  // tt-android test (v95)\n"
+    "    static const uint32_t tt_watch_kb = [] {\n"
+    "      const char* test = std::getenv(\"TT_TEST\");\n"
+    "      return !test ? 0u : !std::strcmp(test, \"watch4\") ? 4u : !std::strcmp(test, \"watch16\") ? 16u : 0u;\n"
+    "    }();\n"
+    "    if (tt_watch_kb) {\n"
+    "      const uint32_t pages = std::max((tt_watch_kb << 10) >> page_size_log2_, uint32_t(1));\n"
+    "      page_first = std::max(page_first, tt_page_first & ~(pages - 1));\n"
+    "      page_last = std::min(page_last, tt_page_last | (pages - 1));\n"
+    "    }\n"
+    "  }\n"
+    "  for (uint32_t i = block_first; i <= block_last; ++i) {\n"
+    "    uint64_t invalidate_bits = UINT64_MAX;\n"),
+    prelude="extern \"C\" uint64_t tt_work_stats[16];\n",
+    includes=("#include <algorithm>", "#include <cstdlib>", "#include <cstring>"))
+edit("src/graphics/vulkan/shared_memory.cpp", (
+    "  for (auto upload_range : upload_page_ranges) {\n"
+    "    uint32_t upload_range_start = upload_range.first;\n",
+    "  // tt-android test (v95): leave out pages whose bytes are what the GPU buffer already has.\n"
+    "  static const bool tt_skip_same = [] {\n"
+    "    const char* test = std::getenv(\"TT_TEST\");\n"
+    "    return test && !std::strcmp(test, \"skipsame\");\n"
+    "  }();\n"
+    "  std::vector<std::pair<uint32_t, uint32_t>> tt_changed_ranges;\n"
+    "  if (tt_skip_same) {\n"
+    "    if (tt_page_hash_.empty()) tt_page_hash_.resize(kBufferSize >> page_size_log2());\n"
+    "    const uint32_t page_bytes = uint32_t(1) << page_size_log2();\n"
+    "    for (const auto& range : upload_page_ranges) {\n"
+    "      for (uint32_t page = range.first; page < range.first + range.second; ++page) {\n"
+    "        uint64_t hash =\n"
+    "            XXH3_64bits(memory().TranslatePhysical(page << page_size_log2()), page_bytes);\n"
+    "        if (!hash) hash = 1;\n"
+    "        if (tt_page_hash_[page] == hash) {\n"
+    "          MakeRangeValid(page << page_size_log2(), page_bytes, false);\n"
+    "          __atomic_fetch_add(&tt_work_stats[4], page_bytes, __ATOMIC_RELAXED);\n"
+    "          continue;\n"
+    "        }\n"
+    "        tt_page_hash_[page] = hash;\n"
+    "        if (!tt_changed_ranges.empty() &&\n"
+    "            tt_changed_ranges.back().first + tt_changed_ranges.back().second == page) {\n"
+    "          ++tt_changed_ranges.back().second;\n"
+    "        } else {\n"
+    "          tt_changed_ranges.emplace_back(page, 1);\n"
+    "        }\n"
+    "      }\n"
+    "    }\n"
+    "  }\n"
+    "  for (auto upload_range : (tt_skip_same ? tt_changed_ranges : upload_page_ranges)) {\n"
+    "    uint32_t upload_range_start = upload_range.first;\n"),
+    includes=("#include <cstring>", "#include <rex/hash.h>"))
+done.append("TESTS (v95) skipsame / watch4 / watch16")
+
 print("\n".join(done))
