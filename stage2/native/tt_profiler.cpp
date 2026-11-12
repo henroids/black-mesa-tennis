@@ -524,7 +524,7 @@ void RunProfiler(std::string dir) {
                             "%.1f of %.1f colour resolves copied directly, %.1f depth resolves "
                             "written directly\n",
                          per(9), per(10), per(11), per(13), per(14), per(15), per(12));
-            std::fprintf(f, "vertices per frame: %.0f\n", per(4));  // temporary (v97)
+            std::fprintf(f, "vertices per frame: %.0f\n", per(4));  // temporary (v98)
             std::memcpy(work_prev, work, sizeof work_prev);
           }
           if (tex) {

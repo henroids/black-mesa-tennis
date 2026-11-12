@@ -1331,35 +1331,27 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
 done.append("F17 colour resolves as one direct image copy")
 
 
-# ============================================================ TESTS (v97, temporary)
-# Where does the GPU's ~13.5 ms per frame go: pixels or vertices/draws? Both tests break the
-# picture on purpose (only the middle of the screen is drawn); they only measure.
-#   TT_TEST=pix1280  draws into 1280-wide targets are clipped to the centre quarter
-#   TT_TEST=pixall   every draw's scissor is shrunk to its centre quarter
-# With a quarter of the pixels, the GPU load that is left is mostly vertex and per-draw work.
-# tt_work_stats[4] counts vertices (indices) drawn.
+# ============================================================ TESTS (v98, temporary)
+# v97: with a quarter of the pixels the GPU still did ~82-86 % of its work, at only ~350,000
+# vertices per frame. TT_TEST=tri: on 3 frames of every 4, each draw is cut to its first 3
+# vertices, so nearly all vertex and pixel work is gone and what is left is the cost of
+# issuing ~750 draws (state, bindings, pass begins, copies). The picture flickers on purpose.
+# tt_work_stats[4] counts vertices drawn.
 edit(CP, (
-    "  scissor_rect.extent.height = scissor.extent[1];\n"
-    "  SetScissor(scissor_rect);\n",
-    "  scissor_rect.extent.height = scissor.extent[1];\n"
-    "  {  // tt-android test (v97)\n"
-    "    static const int tt_pix = [] {\n"
-    "      const char* test = std::getenv(\"TT_TEST\");\n"
-    "      return !test ? 0 : !std::strcmp(test, \"pix1280\") ? 1 : !std::strcmp(test, \"pixall\") ? 2 : 0;\n"
-    "    }();\n"
-    "    if (tt_pix == 2 || (tt_pix == 1 && regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280)) {\n"
-    "      scissor_rect.offset.x += int32_t(scissor_rect.extent.width / 4);\n"
-    "      scissor_rect.offset.y += int32_t(scissor_rect.extent.height / 4);\n"
-    "      scissor_rect.extent.width /= 2;\n"
-    "      scissor_rect.extent.height /= 2;\n"
-    "    }\n"
-    "  }\n"
-    "  SetScissor(scissor_rect);\n"), (
     "    if (!primitive_processing_result.host_draw_vertex_count) {\n",
+    "    {  // tt-android test (v98)\n"
+    "      static const bool tt_tri = [] {\n"
+    "        const char* test = std::getenv(\"TT_TEST\");\n"
+    "        return test && !std::strcmp(test, \"tri\");\n"
+    "      }();\n"
+    "      if (tt_tri && (frame_current_ & 3) && primitive_processing_result.host_draw_vertex_count > 3) {\n"
+    "        primitive_processing_result.host_draw_vertex_count = 3;\n"
+    "      }\n"
+    "    }\n"
     "    __atomic_fetch_add(&tt_work_stats[4], primitive_processing_result.host_draw_vertex_count,\n"
-    "                       __ATOMIC_RELAXED);  // tt-android test (v97)\n"
+    "                       __ATOMIC_RELAXED);\n"
     "    if (!primitive_processing_result.host_draw_vertex_count) {\n"),
     includes=("#include <cstring>",))
-done.append("TESTS (v97) pix1280 / pixall, vertices per frame")
+done.append("TEST (v98) tri, vertices per frame")
 
 print("\n".join(done))
