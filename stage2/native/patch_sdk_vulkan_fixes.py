@@ -1347,4 +1347,41 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
             "  return test && !std::strcmp(test, name);\n"
             "}\n",
     includes=("#include <cstdlib>", "#include <cstring>"))
+
+# ---- D5 (v104, temporary): what stalls a frame? Logs any single pipeline creation, shader
+#      translation or controller rumble call that takes 15 ms or longer, with its duration,
+#      to line up with "tt: frame spike" (Retroid Pocket Duo: stutter on the first serve).
+TT_SLOW = (
+    "// tt-android D5: logs a slow step.\n"
+    "struct TtSlowStep {\n"
+    "  const char* what;\n"
+    "  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();\n"
+    "  explicit TtSlowStep(const char* w) : what(w) {}\n"
+    "  ~TtSlowStep() {\n"
+    "    const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(\n"
+    "                             std::chrono::steady_clock::now() - start)\n"
+    "                             .count();\n"
+    "    if (ms >= 15) TT_SLOW_LOG(\"tt-slow: {} took {} ms\", what, ms);\n"
+    "  }\n"
+    "};\n")
+TT_SLOW_INCLUDES = ("#include <chrono>",)
+edit("src/graphics/vulkan/pipeline_cache.cpp", (
+    "  VkPipeline pipeline;\n"
+    "  VkResult create_result = dfn.vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1,\n",
+    "  VkPipeline pipeline;\n"
+    "  TtSlowStep tt_slow_step(\"pipeline creation\");  // tt-android D5\n"
+    "  VkResult create_result = dfn.vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1,\n"), (
+    "  // Perform translation.\n"
+    "  // If this fails the shader will be marked as invalid and ignored later.\n",
+    "  TtSlowStep tt_slow_step(\"shader translation\");  // tt-android D5\n"
+    "  // Perform translation.\n"
+    "  // If this fails the shader will be marked as invalid and ignored later.\n"),
+    prelude="#define TT_SLOW_LOG REXGPU_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
+edit("src/input/sdl/sdl_input_driver.cpp", (
+    "  return SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,\n",
+    "  TtSlowStep tt_slow_step(\"controller rumble\");  // tt-android D5\n"
+    "  return SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,\n"),
+    prelude="#define TT_SLOW_LOG REXLOG_WARN\n" + TT_SLOW, includes=TT_SLOW_INCLUDES)
+done.append("D5 slow-step log (pipeline creation, shader translation, rumble)")
+
 print("\n".join(done))

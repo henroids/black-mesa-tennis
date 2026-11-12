@@ -108,6 +108,7 @@ history of what was tried and measured.
 |---|---|---|---|
 | **AYN Thor** | Snapdragon 8 Gen 2 (Adreno 740) | Plays well, ~43–46 FPS in rallies | Reference device; active cooling keeps it at full speed |
 | **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Plays well | ~60 FPS over an 8-minute session, including after the phone lowers its CPU clock to stay cool (2.8 → 1.4 GHz). Some menu flicker. Needs a controller. |
+| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | Playable | ~45–52 FPS in matches with the built-in graphics driver and Frame rate at 60. Use the system driver: the Turnip builds tried so far crash at the first serve. The 40 FPS setting currently runs matches at ~22 FPS on this device. |
 | Xiaomi Mi Mix 3 | Snapdragon 845 (Adreno 630) | Not tested | Installs (Android 10), but much less powerful; expect it to be too slow |
 
 Same settings on both tested devices: 720p, Turnip Gen8 V38, Hidden passes Skipped. Other Android
