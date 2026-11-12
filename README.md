@@ -99,7 +99,7 @@ not listed in a row were **720p, Shaders: Wait, Hidden passes: Skipped**.
 | **AYN Thor** (reference) | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | FXAA, Frame rate 60 | **60 FPS** in rallies (98% of a 6-minute session); menus 60. Graphics chip ~82% busy at 680 MHz. |
 | **AYN Thor** | same | Turnip Gen8 V38 | FXAA, Frame rate **40** (build v79) | Steady 40 FPS on the 120 Hz screen, at a much lower load (emulator GPU thread ~25% of a CPU core instead of ~31% at Frame rate 60). Not re-measured since the v85–v94 speed-ups, which only lower it further. |
 | **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | AA Off, Frame rate 60 (build v89) | **~60 FPS** over an 8-minute session (95% of it at 60), even after the phone lowered its CPU clock to stay cool (2.8 → 1.4 GHz). Some menu flicker. Needs a controller. |
-| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | **System (Qualcomm)** | FXAA, Frame rate 60 | **~45–52 FPS** in matches; menus 60. One stutter at the first serve of a match. With Frame rate 40, matches drop to ~22 FPS (use 60). With the current build, the Turnip drivers tried (Turnip-Duo v5.1, Gen8 V38) crash at the first serve; an older build ran on Turnip at only ~20–25 FPS. |
+| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | **System (Qualcomm)** | FXAA, Frame rate 60 | **~45–52 FPS** in matches; menus 60. A short pause (~0.3 s) as each match starts, as on the Thor; the first launch also stutters while graphics programs are prepared and saved. With Frame rate 40, matches drop to ~22 FPS (use 60). With the current build, the Turnip drivers tried (Turnip-Duo v5.1, Gen8 V38) crash at the first serve; an older build ran on Turnip at only ~20–25 FPS. |
 | Xiaomi Mi Mix 3 | Snapdragon 845 (Adreno 630) | — | — | Not tested. Installs (Android 10), but much less powerful; expect it to be too slow. |
 
 Other Android devices with a recent Adreno GPU may work; reports are welcome (see
@@ -240,9 +240,10 @@ The game uses a controller, mapped like an Xbox 360 pad. Extra shortcuts while p
 - **60 FPS needs Hidden passes: Skipped** (the default) and a chip like the Thor's. Slower chips
   run below 60 (Retroid Pocket Duo: ~45–52 FPS in matches).
 - **Brief stutters the first time each screen loads** (shader preparation; cached afterwards).
-- **Retroid Pocket Duo:** use the system driver and Frame rate 60. There's one noticeable stutter
-  at the first serve of a match, and the screen sometimes goes black for a moment between
-  menus. Both are being looked into.
+- **Retroid Pocket Duo:** use the system driver and Frame rate 60. The first launch stutters
+  while the driver prepares graphics programs; they're saved, so later launches are smooth apart
+  from a short pause as each match loads. The screen sometimes stays black when the main menu
+  appears; this is being looked into.
 - **Flicker when something interrupts the game:** rotating the device, pulling down the
   notification shade or switching apps can make the picture flicker for a moment. Menus can also
   flicker now and then. Normal play isn't affected.
