@@ -38,7 +38,8 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
       tt_work_stats [9] passes begun [10] uploads moved [11] uploads that cut the pass
   F17 plain colour resolves become one vkCmdCopyImage render target -> host texture; guest
       memory is not written; the texture is sampled through an R/B-swapped view (v89: ~13
-      per frame, 60 FPS capped with GPU headroom). Off with TT_DRAW_ALL_PASSES. [14] counts.
+      per frame, 60 FPS capped with GPU headroom). 4x sources averaged to 1x go through
+      vkCmdResolveImage (v91: all 26 colour resolves direct, GPU ~96 % -> ~86 % at 60 FPS). Off with TT_DRAW_ALL_PASSES. [14] counts.
   F16 resolves of the two depth buffers F10 leaves empty are done 4 times, then skipped
       (v87: 51.9 -> 55.5 FPS). Off with TT_DRAW_ALL_PASSES. tt_work_stats[13] counts them.
 """
@@ -871,7 +872,7 @@ edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
     "    VkImage src;\n"
     "    VkImage dst;\n"
     "    VkImageCopy region;\n"
-    "    bool resolve;  // average the source's samples (test v91)\n"
+    "    bool resolve;  // average the source's samples\n"
     "  };\n"
     "  void TtCmdCopyImage(VkImage src, VkImage dst, const VkImageCopy& region,\n"
     "                      bool resolve = false) {\n"
@@ -1030,13 +1031,9 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "    const reg::RB_COPY_DEST_INFO d = resolve_info.copy_dest_info;\n"
     "    const draw_util::ResolveCoordinateInfo c = resolve_info.coordinate_info;\n"
     "    const draw_util::ResolveCopyDestCoordinateInfo dc = resolve_info.copy_dest_coordinate_info;\n"
-    "    // Test v91 (TT_TEST=msaa): a 4x render target resolved with all four samples averaged\n"
-    "    // (the game's 2x2 downsample) goes through vkCmdResolveImage the same way.\n"
-    "    static const bool tt_msaa = [] {\n"
-    "      const char* test = std::getenv(\"TT_TEST\");\n"
-    "      return test && !std::strcmp(test, \"msaa\");\n"
-    "    }();\n"
-    "    const bool tt_4x = tt_msaa && e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
+    "    // A 4x render target resolved with all four samples averaged (the game's 2x2\n"
+    "    // downsample) goes through vkCmdResolveImage the same way (v91).\n"
+    "    const bool tt_4x = e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
     "                       resolve_info.rb_copy_control.copy_sample_select ==\n"
     "                           xenos::CopySampleSelect::k0123;\n"
     "    if (!resolve_info.IsCopyingDepth()) {\n"
