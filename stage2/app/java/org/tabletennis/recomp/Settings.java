@@ -22,9 +22,9 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
-    // Temporary test row (v96); TT_TEST carries the value to the native side.
-    static final String[] TEST_LABELS = {"Off", "Crop pass area", "Crop + tiled GPU", "Untiled GPU"};
-    static final String[] TEST_VALUES = {"", "area", "areagmem", "sysmem"};
+    // Temporary test row (v97); TT_TEST carries the value to the native side.
+    static final String[] TEST_LABELS = {"Off", "Centre only: main scene", "Centre only: everything"};
+    static final String[] TEST_VALUES = {"", "pix1280", "pixall"};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -48,7 +48,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.perfLog = p.getBoolean("perf_log", true);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
-        s.test = clamp(p.getInt("test_v96", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v97", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -61,7 +61,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putBoolean("perf_log", perfLog)
                 .putInt("hidden_passes", hiddenPasses)
-                .putInt("test_v96", test)
+                .putInt("test_v97", test)
                 .commit();
     }
 

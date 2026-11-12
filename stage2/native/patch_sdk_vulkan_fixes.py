@@ -1331,91 +1331,35 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
 done.append("F17 colour resolves as one direct image copy")
 
 
-# ============================================================ TESTS (v96, temporary)
-# Render targets are 1280x2048 / 640x4096 and every pass covers all of it. With far fewer,
-# longer passes than in v84 the driver may now render some in tiles, where that area is loaded
-# and stored per pass. TT_TEST=area: a pass covers only the union of its draws' scissors and
-# clear rectangles. The launcher also offers area + TU_DEBUG=gmem and plain TU_DEBUG=sysmem.
-edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
-    "  size_t tt_hoist_next = 0;\n"
-    "  while (stream_remaining) {\n",
-    "  size_t tt_hoist_next = 0;\n"
-    "  static const bool tt_crop = std::getenv(\"TT_TEST\") && !std::strncmp(std::getenv(\"TT_TEST\"), \"area\", 4);\n"
-    "  VkRect2D tt_scissor = {};\n"
-    "  bool tt_scissor_known = false;\n"
-    "  // tt-android T3: the part of a pass's render area its draws can touch (union of the\n"
-    "  // scissors in force at each draw, and of clear rectangles), or the original area.\n"
-    "  auto tt_pass_area = [&](const uintmax_t* next, size_t remaining,\n"
-    "                          const VkRect2D& original) -> VkRect2D {\n"
-    "    int64_t x0 = INT64_MAX, y0 = INT64_MAX, x1 = INT64_MIN, y1 = INT64_MIN;\n"
-    "    VkRect2D scissor = tt_scissor;\n"
-    "    bool scissor_known = tt_scissor_known;\n"
-    "    auto add = [&](const VkRect2D& r) {\n"
-    "      x0 = std::min<int64_t>(x0, r.offset.x);\n"
-    "      y0 = std::min<int64_t>(y0, r.offset.y);\n"
-    "      x1 = std::max<int64_t>(x1, int64_t(r.offset.x) + r.extent.width);\n"
-    "      y1 = std::max<int64_t>(y1, int64_t(r.offset.y) + r.extent.height);\n"
-    "    };\n"
-    "    while (remaining) {\n"
-    "      const CommandHeader& h = *reinterpret_cast<const CommandHeader*>(next);\n"
-    "      const uint8_t* a = reinterpret_cast<const uint8_t*>(next + kCommandHeaderSizeElements);\n"
-    "      if (h.command == Command::kVkEndRendering || h.command == Command::kVkEndRenderPass) {\n"
-    "        break;\n"
-    "      }\n"
-    "      if (h.command == Command::kVkBeginRendering || h.command == Command::kVkBeginRenderPass) {\n"
-    "        return original;\n"
-    "      }\n"
-    "      if (h.command == Command::kVkSetScissor) {\n"
-    "        const auto& s = *reinterpret_cast<const ArgsVkSetScissor*>(a);\n"
-    "        if (s.first_scissor == 0 && s.scissor_count) {\n"
-    "          scissor = *reinterpret_cast<const VkRect2D*>(\n"
-    "              a + rex::align(sizeof(ArgsVkSetScissor), alignof(VkRect2D)));\n"
-    "          scissor_known = true;\n"
-    "        }\n"
-    "      } else if (h.command == Command::kVkDraw || h.command == Command::kVkDrawIndexed) {\n"
-    "        if (!scissor_known) return original;\n"
-    "        add(scissor);\n"
-    "      } else if (h.command == Command::kVkClearAttachments) {\n"
-    "        const auto& c = *reinterpret_cast<const ArgsVkClearAttachments*>(a);\n"
-    "        size_t o = rex::align(sizeof(ArgsVkClearAttachments), alignof(VkClearAttachment));\n"
-    "        o = rex::align(o + sizeof(VkClearAttachment) * c.attachment_count, alignof(VkClearRect));\n"
-    "        const VkClearRect* rects = reinterpret_cast<const VkClearRect*>(a + o);\n"
-    "        for (uint32_t i = 0; i < c.rect_count; ++i) add(rects[i].rect);\n"
-    "      }\n"
-    "      next += kCommandHeaderSizeElements + h.arguments_size_elements;\n"
-    "      remaining -= kCommandHeaderSizeElements + h.arguments_size_elements;\n"
+# ============================================================ TESTS (v97, temporary)
+# Where does the GPU's ~13.5 ms per frame go: pixels or vertices/draws? Both tests break the
+# picture on purpose (only the middle of the screen is drawn); they only measure.
+#   TT_TEST=pix1280  draws into 1280-wide targets are clipped to the centre quarter
+#   TT_TEST=pixall   every draw's scissor is shrunk to its centre quarter
+# With a quarter of the pixels, the GPU load that is left is mostly vertex and per-draw work.
+# tt_work_stats[4] counts vertices (indices) drawn.
+edit(CP, (
+    "  scissor_rect.extent.height = scissor.extent[1];\n"
+    "  SetScissor(scissor_rect);\n",
+    "  scissor_rect.extent.height = scissor.extent[1];\n"
+    "  {  // tt-android test (v97)\n"
+    "    static const int tt_pix = [] {\n"
+    "      const char* test = std::getenv(\"TT_TEST\");\n"
+    "      return !test ? 0 : !std::strcmp(test, \"pix1280\") ? 1 : !std::strcmp(test, \"pixall\") ? 2 : 0;\n"
+    "    }();\n"
+    "    if (tt_pix == 2 || (tt_pix == 1 && regs.Get<reg::RB_SURFACE_INFO>().surface_pitch == 1280)) {\n"
+    "      scissor_rect.offset.x += int32_t(scissor_rect.extent.width / 4);\n"
+    "      scissor_rect.offset.y += int32_t(scissor_rect.extent.height / 4);\n"
+    "      scissor_rect.extent.width /= 2;\n"
+    "      scissor_rect.extent.height /= 2;\n"
     "    }\n"
-    "    const int64_t ox0 = original.offset.x, oy0 = original.offset.y;\n"
-    "    const int64_t ox1 = ox0 + original.extent.width, oy1 = oy0 + original.extent.height;\n"
-    "    x0 = std::max(x0 & ~int64_t(31), ox0);\n"
-    "    y0 = std::max(y0 & ~int64_t(31), oy0);\n"
-    "    x1 = std::min((x1 + 31) & ~int64_t(31), ox1);\n"
-    "    y1 = std::min((y1 + 31) & ~int64_t(31), oy1);\n"
-    "    if (x0 >= x1 || y0 >= y1) return original;\n"
-    "    VkRect2D area;\n"
-    "    area.offset.x = int32_t(x0);\n"
-    "    area.offset.y = int32_t(y0);\n"
-    "    area.extent.width = uint32_t(x1 - x0);\n"
-    "    area.extent.height = uint32_t(y1 - y0);\n"
-    "    return area;\n"
-    "  };\n"
-    "  while (stream_remaining) {\n"), (
-    # T3: crop the dynamic-rendering pass area
-    "        rendering_info.renderArea = args.render_area;\n",
-    "        rendering_info.renderArea =  // tt-android T3\n"
-    "            tt_crop ? tt_pass_area(stream + header.arguments_size_elements,\n"
-    "                                   stream_remaining - header.arguments_size_elements,\n"
-    "                                   args.render_area)\n"
-    "                    : args.render_area;\n"), (
-    "        auto& args = *reinterpret_cast<const ArgsVkSetScissor*>(stream);\n",
-    "        auto& args = *reinterpret_cast<const ArgsVkSetScissor*>(stream);\n"
-    "        if (args.first_scissor == 0 && args.scissor_count) {  // tt-android T3\n"
-    "          tt_scissor = *reinterpret_cast<const VkRect2D*>(\n"
-    "              reinterpret_cast<const uint8_t*>(stream) +\n"
-    "              rex::align(sizeof(ArgsVkSetScissor), alignof(VkRect2D)));\n"
-    "          tt_scissor_known = true;\n"
-    "        }\n"),
-    includes=("#include <algorithm>", "#include <cstdlib>", "#include <cstring>"))
-done.append("TEST (v96) cropped pass area")
+    "  }\n"
+    "  SetScissor(scissor_rect);\n"), (
+    "    if (!primitive_processing_result.host_draw_vertex_count) {\n",
+    "    __atomic_fetch_add(&tt_work_stats[4], primitive_processing_result.host_draw_vertex_count,\n"
+    "                       __ATOMIC_RELAXED);  // tt-android test (v97)\n"
+    "    if (!primitive_processing_result.host_draw_vertex_count) {\n"),
+    includes=("#include <cstring>",))
+done.append("TESTS (v97) pix1280 / pixall, vertices per frame")
 
 print("\n".join(done))
