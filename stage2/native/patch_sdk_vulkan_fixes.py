@@ -1377,7 +1377,7 @@ done.append("D5 slow-step log (pipeline creation, shader translation, rumble)")
 #      VkPipelineCache. Turnip keeps its own disk cache, but Qualcomm's driver (Retroid Pocket
 #      Duo) compiled everything again on every launch: stalls of 0.5-4 s in the first minute
 #      with Shaders: Wait. The cache lives next to the SDK's shader storage and is written
-#      every 16 new pipelines or 15 s, and when shader storage shuts down. The driver checks
+#      every 16 new pipelines, within 3 s of any new one (v106), and at shutdown. The driver checks
 #      the header itself and ignores data from another GPU or driver version.
 edit("include/rex/ui/vulkan/functions/device_1_0.inc", (
     "XE_UI_VULKAN_FUNCTION(vkCreateGraphicsPipelines)\n",
@@ -1411,6 +1411,7 @@ edit("src/graphics/vulkan/pipeline_cache.cpp", (
     "  std::chrono::steady_clock::time_point last_save = std::chrono::steady_clock::now();\n"
     "};\n"
     "static TtPipelineCacheState tt_pc;\n"
+    "static void TtPipelineCacheSave(bool force);\n"
     "static void TtPipelineCacheOpen(const rex::ui::vulkan::VulkanDevice* device,\n"
     "                                const std::filesystem::path& path) {\n"
     "  if (tt_pc.cache != VK_NULL_HANDLE || !device) return;\n"
@@ -1438,6 +1439,16 @@ edit("src/graphics/vulkan/pipeline_cache.cpp", (
     "    if (dfn.vkCreatePipelineCache(device->device(), &info, nullptr, &tt_pc.cache) != VK_SUCCESS) {\n"
     "      tt_pc.cache = VK_NULL_HANDLE;\n"
     "    }\n"
+    "  }\n"
+    "  if (tt_pc.cache != VK_NULL_HANDLE) {\n"
+    "    // Pipelines made since the last save are written within ~3 s, so a game closed by\n"
+    "    // Android (no shutdown) loses at most the last few seconds (v106).\n"
+    "    std::thread([] {\n"
+    "      for (;;) {\n"
+    "        std::this_thread::sleep_for(std::chrono::seconds(3));\n"
+    "        if (tt_pc.unsaved.load()) TtPipelineCacheSave(true);\n"
+    "      }\n"
+    "    }).detach();\n"
     "  }\n"
     "  REXLOG_INFO(\"tt: pipeline cache {} ({} KB loaded)\",\n"
     "              tt_pc.cache != VK_NULL_HANDLE ? \"ready\" : \"unavailable\", data.size() / 1024);\n"
@@ -1473,7 +1484,7 @@ edit("src/graphics/vulkan/pipeline_cache.cpp", (
     "  }\n"
     "}\n"),
     includes=("#include <atomic>", "#include <chrono>", "#include <filesystem>", "#include <mutex>",
-              "#include <vector>"))
+              "#include <thread>", "#include <vector>"))
 done.append("F19 persistent Vulkan pipeline cache")
 
 print("\n".join(done))
