@@ -40,6 +40,10 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
       memory is not written; the texture is sampled through an R/B-swapped view (v89: ~13
       per frame, 60 FPS capped with GPU headroom). 4x sources averaged to 1x go through
       vkCmdResolveImage (v91: all 26 colour resolves direct, GPU ~96 % -> ~86 % at 60 FPS). Off with TT_DRAW_ALL_PASSES. [14] counts.
+  F18 plain depth resolves (D24S8 -> k_24_8 texture, host R32F) written straight into the
+      texture by a small compute shader (v93: ~2 per frame, GPU ~83.5 % -> ~81 % at 60 FPS;
+      no resolved texture goes through guest memory any more). Off with TT_DRAW_ALL_PASSES.
+      tt_work_stats[12] counts them.
   F16 resolves of the two depth buffers F10 leaves empty are done 4 times, then skipped
       (v87: 51.9 -> 55.5 FPS). Off with TT_DRAW_ALL_PASSES. tt_work_stats[13] counts them.
 """
@@ -943,7 +947,7 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
     "  VkImageFormatListCreateInfo image_format_list_create_info;\n",
     "  image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;\n"
     "  if (formats[0] == VK_FORMAT_R32_SFLOAT && !is_3d && key.mip_max_level == 0) {\n"
-    "    image_create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;  // tt-android test (v93)\n"
+    "    image_create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;  // tt-android F18\n"
     "  }\n"
     "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n"
     "  image_create_info.queueFamilyIndexCount = 0;\n"
@@ -1109,12 +1113,9 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "      }\n"
     "    }\n"
     "  }\n"
-    "  // tt-android test (v93, TT_TEST=depth): plain depth resolve (D24S8, no MSAA) -> the R32F\n"
+    "  // tt-android F18: plain depth resolve (D24S8, no MSAA) -> the R32F\n"
     "  // host texture, written by a small compute shader that reads the host depth target.\n"
-    "  static const bool tt_depth = [] {\n"
-    "    const char* test = std::getenv(\"TT_TEST\");\n"
-    "    return test && !std::strcmp(test, \"depth\") && !std::getenv(\"TT_DRAW_ALL_PASSES\");\n"
-    "  }();\n"
+    "  static const bool tt_depth = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
     "  if (tt_depth && resolve_info.copy_dest_extent_length && resolve_info.IsCopyingDepth() &&\n"
     "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
     "    static const uint32_t tt_depth_copy_cs[] = {\n"
