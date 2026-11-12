@@ -22,9 +22,9 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
-    // Temporary test row (v99): switches of the Turnip shader compiler.
-    static final String[] TEST_LABELS = {"Off", "Driver: constants from buffers", "Driver: no shader preamble"};
-    static final String[] TEST_VALUES = {"", "nouboopt", "nopreamble"};
+    // Temporary test row (v100); TT_TEST carries the value to the native side.
+    static final String[] TEST_LABELS = {"Off", "Slow image copies"};
+    static final String[] TEST_VALUES = {"", "slowcopy"};
     int test = 0;
 
     private static final String PREFS = "tt_settings";
@@ -48,7 +48,7 @@ final class Settings {
         s.shaderMode = p.getInt("shader_mode", 1) == 0 ? 0 : 1;
         s.perfLog = p.getBoolean("perf_log", true);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
-        s.test = clamp(p.getInt("test_v99", 0), TEST_LABELS.length);
+        s.test = clamp(p.getInt("test_v100", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -61,7 +61,7 @@ final class Settings {
                 .putInt("shader_mode", shaderMode)
                 .putBoolean("perf_log", perfLog)
                 .putInt("hidden_passes", hiddenPasses)
-                .putInt("test_v99", test)
+                .putInt("test_v100", test)
                 .commit();
     }
 
