@@ -36,6 +36,9 @@ DIAGNOSTICS (counters read by tt_profiler.cpp via dlsym; cheap atomic adds)
   F15 uploads recorded in front of the open render pass instead of cutting it (v84: render
       passes 256 -> 68 per frame, ~46 -> ~52 FPS). Off with TT_DRAW_ALL_PASSES.
       tt_work_stats [9] passes begun [10] uploads moved [11] uploads that cut the pass
+  F17 plain colour resolves become one vkCmdCopyImage render target -> host texture; guest
+      memory is not written; the texture is sampled through an R/B-swapped view (v89: ~13
+      per frame, 60 FPS capped with GPU headroom). Off with TT_DRAW_ALL_PASSES. [14] counts.
   F16 resolves of the two depth buffers F10 leaves empty are done 4 times, then skipped
       (v87: 51.9 -> 55.5 FPS). Off with TT_DRAW_ALL_PASSES. tt_work_stats[13] counts them.
 """
@@ -851,8 +854,7 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
 done.append("F16 resolves of the depth buffers F10 leaves empty skipped")
 
 
-# ============================================================ TESTS (v89, temporary)
-# TT_TEST=direct: colour resolves copied straight from the host render target into the host
+# ---- F17 (v89: rallies ~55 -> 60 FPS capped, GPU ~90 % instead of 99 %): colour resolves copied straight from the host render target into the host
 # texture (one image copy) instead of render target -> EDRAM buffer -> guest bytes in shared
 # memory -> scratch buffer -> texture. Only when everything is plain: 8888 colour, no MSAA,
 # no offsets, one render target owns the whole area, and exactly one existing 8888 texture
@@ -864,7 +866,7 @@ edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
     "  void Execute(VkCommandBuffer command_buffer);\n",
     "  void Execute(VkCommandBuffer command_buffer);\n"
     "\n"
-    "  // tt-android test (v89): one image-to-image copy, run in order with everything else.\n"
+    "  // tt-android F17: one image-to-image copy, run in order with everything else.\n"
     "  struct TtArgsCopyImage {\n"
     "    VkImage src;\n"
     "    VkImage dst;\n"
@@ -881,7 +883,7 @@ edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
     "    kVkCopyBufferToImage,\n    kTtCopyImage,\n"))
 edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
     "      case Command::kVkCopyBufferToImage: {\n",
-    "      case Command::kTtCopyImage: {  // tt-android test (v89)\n"
+    "      case Command::kTtCopyImage: {  // tt-android F17\n"
     "        auto& args = *reinterpret_cast<const TtArgsCopyImage*>(stream);\n"
     "        dfn.vkCmdCopyImage(command_buffer, args.src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,\n"
     "                           args.dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &args.region);\n"
@@ -893,21 +895,21 @@ edit("include/rex/ui/vulkan/functions/device_1_0.inc", (
     "XE_UI_VULKAN_FUNCTION(vkCmdCopyBufferToImage)\nXE_UI_VULKAN_FUNCTION(vkCmdCopyImage)\n"))
 edit("include/rex/graphics/pipeline/texture/cache.h", (
     "  rex::thread::global_critical_region global_critical_region_;\n",
-    " protected:  // tt-android test (v89)\n"
+    " protected:  // tt-android F17\n"
     "  rex::thread::global_critical_region global_critical_region_;\n"
     " private:\n"), (
     "  std::unordered_map<TextureKey, std::unique_ptr<Texture>, TextureKey::Hasher> textures_;\n",
-    " protected:  // tt-android test (v89)\n"
+    " protected:  // tt-android F17\n"
     "  std::unordered_map<TextureKey, std::unique_ptr<Texture>, TextureKey::Hasher> textures_;\n"
     " private:\n"))
 edit("include/rex/graphics/vulkan/texture_cache.h", (
     "    VkImage image() const { return image_; }\n",
     "    VkImage image() const { return image_; }\n"
-    "    // tt-android test (v89): filled by a raw copy from a render target (red/blue not swapped).\n"
+    "    // tt-android F17: filled by a raw copy from a render target (red/blue not swapped).\n"
     "    bool tt_rb_swapped_ = false;\n"), (
     "  void GetTextureUsageMasks(VulkanTexture::Usage usage, VkPipelineStageFlags& stage_mask,\n",
     " public:\n"
-    "  // tt-android test (v89): the host image a colour resolve to this page can be copied into\n"
+    "  // tt-android F17: the host image a colour resolve to this page can be copied into\n"
     "  // directly (made ready as a transfer destination), or null.\n"
     "  VkImage TtDirectResolveTarget(uint32_t base_page, uint32_t width, uint32_t height,\n"
     "                                uint32_t endian, bool rb_swapped, VkExtent2D& extent_out);\n"
@@ -915,7 +917,7 @@ edit("include/rex/graphics/vulkan/texture_cache.h", (
     "  void GetTextureUsageMasks(VulkanTexture::Usage usage, VkPipelineStageFlags& stage_mask,\n"))
 edit("src/graphics/vulkan/texture_cache.cpp", (
     "  view_key.host_swizzle = host_swizzle;\n\n  view_key.is_array = uint32_t(is_array);\n",
-    "  if (tt_rb_swapped_ && vulkan_device->properties().imageViewFormatSwizzle) {  // tt-android test (v89)\n"
+    "  if (tt_rb_swapped_ && vulkan_device->properties().imageViewFormatSwizzle) {  // tt-android F17\n"
     "    uint32_t swapped = 0;\n"
     "    for (uint32_t i = 0; i < 4; ++i) {\n"
     "      uint32_t source = (host_swizzle >> (3 * i)) & 0b111;\n"
@@ -932,7 +934,7 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
     "  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
     "  TextureKey texture_key = vulkan_texture.key();\n",
     "  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);\n"
-    "  if (vulkan_texture.tt_rb_swapped_) {  // tt-android test (v89): a normal load again\n"
+    "  if (vulkan_texture.tt_rb_swapped_) {  // tt-android F17: a normal load again\n"
     "    vulkan_texture.tt_rb_swapped_ = false;\n"
     "    tt_views_changed.store(true, std::memory_order_relaxed);\n"
     "  }\n"
@@ -993,21 +995,18 @@ edit("src/graphics/vulkan/texture_cache.cpp", (
     "}\n"
     "\n"
     "VkImageView VulkanTextureCache::VulkanTexture::GetView(bool is_signed, uint32_t host_swizzle,\n"),
-    prelude="// tt-android test (v89): a texture switched between its normal and red/blue-swapped view.\n"
+    prelude="// tt-android F17: a texture switched between its normal and red/blue-swapped view.\n"
             "static std::atomic<bool> tt_views_changed{false};\n",
     includes=("#include <atomic>",))
 edit("src/graphics/vulkan/render_target_cache.cpp", (
     "  image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;\n"
     "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n",
     "  image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT |\n"
-    "                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT;  // tt-android test (v89)\n"
+    "                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT;  // tt-android F17\n"
     "  image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;\n"), (
     "  // Copying.\n  bool copied = false;\n",
-    "  // tt-android test (v89): plain colour resolve -> one image copy into the host texture.\n"
-    "  static const bool tt_direct = [] {\n"
-    "    const char* test = std::getenv(\"TT_TEST\");\n"
-    "    return test && !std::strcmp(test, \"direct\") && !std::getenv(\"TT_DRAW_ALL_PASSES\");\n"
-    "  }();\n"
+    "  // tt-android F17: plain colour resolve -> one image copy into the host texture.\n"
+    "  static const bool tt_direct = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"
     "  if (tt_direct && resolve_info.copy_dest_extent_length && !resolve_info.IsCopyingDepth() &&\n"
     "      !draw_resolution_scaled && GetPath() == Path::kHostRenderTargets) {\n"
     "    const draw_util::ResolveEdramInfo e = resolve_info.color_edram_info;\n"
@@ -1066,6 +1065,6 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "    }\n"
     "  }\n"
     "  // Copying.\n  bool copied = false;\n"))
-done.append("TEST (v89) direct colour resolves")
+done.append("F17 colour resolves as one direct image copy")
 
 print("\n".join(done))
