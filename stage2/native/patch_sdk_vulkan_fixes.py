@@ -871,13 +871,16 @@ edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
     "    VkImage src;\n"
     "    VkImage dst;\n"
     "    VkImageCopy region;\n"
+    "    bool resolve;  // average the source's samples (test v91)\n"
     "  };\n"
-    "  void TtCmdCopyImage(VkImage src, VkImage dst, const VkImageCopy& region) {\n"
+    "  void TtCmdCopyImage(VkImage src, VkImage dst, const VkImageCopy& region,\n"
+    "                      bool resolve = false) {\n"
     "    auto& args = *reinterpret_cast<TtArgsCopyImage*>(\n"
     "        WriteCommand(Command::kTtCopyImage, sizeof(TtArgsCopyImage)));\n"
     "    args.src = src;\n"
     "    args.dst = dst;\n"
     "    args.region = region;\n"
+    "    args.resolve = resolve;\n"
     "  }\n"), (
     "    kVkCopyBufferToImage,\n",
     "    kVkCopyBufferToImage,\n    kTtCopyImage,\n"))
@@ -885,6 +888,18 @@ edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
     "      case Command::kVkCopyBufferToImage: {\n",
     "      case Command::kTtCopyImage: {  // tt-android F17\n"
     "        auto& args = *reinterpret_cast<const TtArgsCopyImage*>(stream);\n"
+    "        if (args.resolve) {\n"
+    "          VkImageResolve resolve_region;\n"
+    "          resolve_region.srcSubresource = args.region.srcSubresource;\n"
+    "          resolve_region.srcOffset = args.region.srcOffset;\n"
+    "          resolve_region.dstSubresource = args.region.dstSubresource;\n"
+    "          resolve_region.dstOffset = args.region.dstOffset;\n"
+    "          resolve_region.extent = args.region.extent;\n"
+    "          dfn.vkCmdResolveImage(command_buffer, args.src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,\n"
+    "                                args.dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,\n"
+    "                                &resolve_region);\n"
+    "          break;\n"
+    "        }\n"
     "        dfn.vkCmdCopyImage(command_buffer, args.src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,\n"
     "                           args.dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &args.region);\n"
     "      } break;\n"
@@ -892,7 +907,9 @@ edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
     "      case Command::kVkCopyBufferToImage: {\n"))
 edit("include/rex/ui/vulkan/functions/device_1_0.inc", (
     "XE_UI_VULKAN_FUNCTION(vkCmdCopyBufferToImage)\n",
-    "XE_UI_VULKAN_FUNCTION(vkCmdCopyBufferToImage)\nXE_UI_VULKAN_FUNCTION(vkCmdCopyImage)\n"))
+    "XE_UI_VULKAN_FUNCTION(vkCmdCopyBufferToImage)\nXE_UI_VULKAN_FUNCTION(vkCmdCopyImage)\n"), (
+    "XE_UI_VULKAN_FUNCTION(vkCmdPushConstants)\n",
+    "XE_UI_VULKAN_FUNCTION(vkCmdPushConstants)\nXE_UI_VULKAN_FUNCTION(vkCmdResolveImage)\n"))
 edit("include/rex/graphics/pipeline/texture/cache.h", (
     "  rex::thread::global_critical_region global_critical_region_;\n",
     " protected:  // tt-android F17\n"
@@ -1013,7 +1030,19 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "    const reg::RB_COPY_DEST_INFO d = resolve_info.copy_dest_info;\n"
     "    const draw_util::ResolveCoordinateInfo c = resolve_info.coordinate_info;\n"
     "    const draw_util::ResolveCopyDestCoordinateInfo dc = resolve_info.copy_dest_coordinate_info;\n"
-    "    if (e.msaa_samples == xenos::MsaaSamples::k1X &&\n"
+    "    // Test v91 (TT_TEST=msaa): a 4x render target resolved with all four samples averaged\n"
+    "    // (the game's 2x2 downsample) goes through vkCmdResolveImage the same way.\n"
+    "    static const bool tt_msaa = [] {\n"
+    "      const char* test = std::getenv(\"TT_TEST\");\n"
+    "      return test && !std::strcmp(test, \"msaa\");\n"
+    "    }();\n"
+    "    const bool tt_4x = tt_msaa && e.msaa_samples == xenos::MsaaSamples::k4X &&\n"
+    "                       resolve_info.rb_copy_control.copy_sample_select ==\n"
+    "                           xenos::CopySampleSelect::k0123;\n"
+    "    if (!resolve_info.IsCopyingDepth()) {\n"
+    "      __atomic_fetch_add(&tt_work_stats[15], 1, __ATOMIC_RELAXED);  // colour resolves\n"
+    "    }\n"
+    "    if ((e.msaa_samples == xenos::MsaaSamples::k1X || tt_4x) &&\n"
     "        e.format == uint32_t(xenos::ColorRenderTargetFormat::k_8_8_8_8) && !e.format_is_64bpp &&\n"
     "        d.copy_dest_format == xenos::ColorFormat::k_8_8_8_8 && !d.copy_dest_array &&\n"
     "        !d.copy_dest_exp_bias && !c.edram_offset_x_div_8 && !c.edram_offset_y_div_8 &&\n"
@@ -1033,10 +1062,10 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "        const uint32_t height = resolve_info.height_div_8 * 8;\n"
     "        VkExtent2D extent = {};\n"
     "        VkImage dest = VK_NULL_HANDLE;\n"
-    "        if (!rt_key.is_depth && rt_key.msaa_samples == xenos::MsaaSamples::k1X &&\n"
+    "        if (!rt_key.is_depth && rt_key.msaa_samples == e.msaa_samples &&\n"
     "            rt_key.resource_format == uint32_t(xenos::ColorRenderTargetFormat::k_8_8_8_8) &&\n"
     "            rt_key.base_tiles == dump_base && rt_key.pitch_tiles_at_32bpp == dump_pitch &&\n"
-    "            width <= dump_pitch * 80) {\n"
+    "            width <= dump_pitch * (tt_4x ? 40 : 80)) {\n"
     "          dest = texture_cache.TtDirectResolveTarget(resolve_info.copy_dest_base >> 12, width,\n"
     "                                                     height, uint32_t(d.copy_dest_endian),\n"
     "                                                     d.copy_dest_swap != 0, extent);\n"
@@ -1057,7 +1086,7 @@ edit("src/graphics/vulkan/render_target_cache.cpp", (
     "          region.extent.width = extent.width;\n"
     "          region.extent.height = extent.height;\n"
     "          region.extent.depth = 1;\n"
-    "          command_buffer.TtCmdCopyImage(rt.image(), dest, region);\n"
+    "          command_buffer.TtCmdCopyImage(rt.image(), dest, region, tt_4x);\n"
     "          __atomic_fetch_add(&tt_work_stats[14], 1, __ATOMIC_RELAXED);\n"
     "          resolve_info.copy_dest_extent_length = 0;  // done; clears still happen below\n"
     "        }\n"

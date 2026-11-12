@@ -521,8 +521,8 @@ void RunProfiler(std::string dir) {
                          per(0), per(1), per(2), per(3) / 1024.0, per(6), per(7) / 1024.0, per(8));
             std::fprintf(f, "render passes per frame: %.1f begun; uploads inside a pass: %.1f moved in "
                             "front of it, %.1f cut it; %.1f resolves of unused buffers skipped, "
-                            "%.1f copied directly\n",
-                         per(9), per(10), per(11), per(13), per(14));
+                            "%.1f of %.1f colour resolves copied directly\n",
+                         per(9), per(10), per(11), per(13), per(14), per(15));
             std::memcpy(work_prev, work, sizeof work_prev);
           }
           if (tex) {
