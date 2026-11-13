@@ -27,6 +27,12 @@ final class Settings {
     static final String[] RENDERER_LABELS = {"Old", "New"};
     int renderer = 0;
 
+    // Temporary test row (T3, renderer branch): hide one heavy shader, or turn its alpha test off.
+    static final String[] TEST_LABELS = {"Off", "Hide shader A", "A without alpha test",
+            "Hide shader B", "Hide shader C"};
+    static final String[] TEST_VALUES = {"", "hide_5c7a", "noalpha_5c7a", "hide_2cf2", "hide_8a14"};
+    int test = 0;
+
     private static final String PREFS = "tt_settings";
 
     int resolution = 0;
@@ -43,6 +49,7 @@ final class Settings {
         s.perfLog = p.getBoolean("perf_log", true);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
         s.renderer = clamp(p.getInt("renderer", 0), RENDERER_LABELS.length);
+        s.test = clamp(p.getInt("test", 0), TEST_LABELS.length);
         return s;
     }
 
@@ -54,6 +61,7 @@ final class Settings {
                 .putBoolean("perf_log", perfLog)
                 .putInt("hidden_passes", hiddenPasses)
                 .putInt("renderer", renderer)
+                .putInt("test", test)
                 .commit();
     }
 
@@ -65,6 +73,7 @@ final class Settings {
                 + " | GPU driver: " + driver
                 + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
                 + " | Renderer: " + RENDERER_LABELS[renderer]
+                + " | Test: " + TEST_LABELS[test]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }
 

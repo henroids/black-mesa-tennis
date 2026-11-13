@@ -23,7 +23,8 @@ Go back to the normal app's build:
 | C1 | **Census**: which GPU features the game uses. The census code is removed again. | **Done** (results below) |
 | C2 | **Plug-in skeleton**: `librexgpu-tt.so` (`stage2/renderer/`), loaded through the SDK's `gpu_plugin` seam when the start screen says **Renderer: New**. It forwards every call to the SDK renderer, so New must look and run exactly like Old; the test is only that it builds, loads and plays. | **Done**: Thor, Turnip Gen8 V39, 720p, FXAA, Renderer New: plug-in loaded, 60 FPS, GPU ~80-89 % busy @ 680 MHz, same as Old |
 | T1 | **GPU time per pass**: timestamps at every render-pass begin and end (`gpu_time.txt` in the logs, one block per 10 s). Draws exactly as before. | **Done** (results below) |
-| T2 | **GPU time per shader pair**: one more timestamp in front of every draw, so the main scene's time is split by vertex/pixel shader pair, and one at every mid-frame submission so GPU idle time is separated from work. The timestamps themselves slow the GPU a little, so this build may not hold 60 FPS. | **Build ready, waiting for logs** |
+| T2 | **GPU time per shader pair**: a timestamp in front of every draw. | **Done** (results below) |
+| T3 | **Heavy shaders**: a temporary **Test** row hides each of the three most expensive pixel shaders in turn (screenshot shows what it draws, `gpu_time.txt` what it costs) and can turn the alpha test off for the heaviest. All shaders' microcode listings go to `shaders.txt`. | **Build ready, waiting for logs** |
 | C3 | Own command processor in the plug-in: reads the game's command stream itself, shows the picture through its own swap path | — |
 | C4 | Render targets as plain Vulkan images (no EDRAM), resolves as image copies | — |
 | C5 | Shaders translated once to lean SPIR-V with real vertex inputs; vertex/index data in real buffers | — |
@@ -36,11 +37,39 @@ on the Thor, nearly half of it asleep, and its biggest single cost is memory pag
 (9 %), not render-target emulation. So the remaining load is on the GPU itself, and until now
 its split was only estimated by switching things off. T1 measures it directly.
 
-### Testing T2
+### Testing T3
 
-1. Build and install the test app (command above).
-2. Renderer can stay on either setting. Play one match of at least two minutes, then quit.
-3. Export the logs (`game_gpu_time.txt`).
+Build and install the test app (command above). Then, for each **Test** setting below: set it on
+the start screen, start a match, take one screenshot (L3 + R3) during a rally, play about a
+minute, quit. Export the logs once at the end (each run is kept separately).
+
+1. Off
+2. Hide shader A
+3. A without alpha test
+4. Hide shader B
+5. Hide shader C
+
+Missing or odd-looking things in 2-5 are expected; that is what the screenshots are for.
+
+## T2 result: the expensive shaders
+
+Same device and settings as T1, in a match (16.3 ms of GPU work per frame with the extra
+timestamps). The two main-scene passes (8.3 ms in T1) split like this:
+
+| Pixel shader | GPU time | Draws per frame | What it is (from the census) |
+|---|---|---|---|
+| A `5C7A942F` | ~3.5 ms (4 vertex shaders) | ~70, ~100,000 vertices | 13 textures, alpha test on, depth test and write |
+| B `2CF2B765` | ~1.3 ms (4 vertex shaders) | ~22, ~45,000 vertices | 21 textures |
+| C `8A141C27` | 0.7 ms | 8, 3 vertices each (full-screen) | 4 textures, depth test and write |
+| ~20 others | ~5 ms together | ~450 | none above 0.7 ms |
+
+The "gap" T1 booked after a main-scene pass was really part of pass #4's draws (shader A); the
+GPU waits only ~0.9 ms per frame in total.
+
+Shader A matters most. With the alpha test on, the shader can throw pixels away, so the GPU
+cannot reject hidden pixels by depth before running it (every overlapping pixel is shaded with
+all 13 textures). The SDK already uses early depth rejection for every draw without alpha
+test.
 
 ## T1 result: where the GPU's frame goes
 

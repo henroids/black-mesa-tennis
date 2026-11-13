@@ -1829,4 +1829,73 @@ _text = (_text[:_first] + _stamp % "pass" + _text[_first:_second] + _stamp % "tr
 _path.write_text(_text)
 done.append("T1/T2 GPU time per render pass and per shader pair (renderer branch)")
 
+# ============================================================ RENDERER BRANCH: T3 heavy shaders
+# T2 showed three pixel shaders taking ~5.5 ms of the ~16 ms GPU frame. T3 (launcher "Test"
+# row, TT_TEST) hides each one in turn, so a screenshot shows what it draws and gpu_time.txt
+# shows what it really costs, and one option turns the alpha test off for the heaviest, to
+# measure what the alpha test (pixel discard, which stops the GPU's early depth rejection)
+# costs. Every vertex and pixel shader's Xbox 360 microcode listing goes to
+# <logs>/shaders.txt, once per shader.
+TT_T3 = r"""
+// tt-android T3: shader tests and microcode listings (renderer branch).
+namespace tt_t3 {
+inline const std::string& Mode() {
+  static const std::string mode = [] {
+    const char* m = std::getenv("TT_TEST");
+    return std::string(m ? m : "");
+  }();
+  return mode;
+}
+inline void Dump(const rex::graphics::Shader& shader, const char* kind) {
+  static std::mutex mutex;
+  static std::set<uint64_t> seen;
+  static bool started = false;
+  std::lock_guard<std::mutex> lock(mutex);
+  if (!seen.insert(shader.ucode_data_hash()).second) return;
+  const char* dir = std::getenv("TT_PROFILE");
+  if (!dir) return;
+  FILE* f = std::fopen((std::string(dir) + "/shaders.txt").c_str(), started ? "a" : "w");
+  if (!f) return;
+  started = true;
+  std::fprintf(f, "\n======== %s %08X (%zu ucode dwords)\n%s\n", kind,
+               uint32_t(shader.ucode_data_hash()), shader.ucode_dword_count(),
+               shader.ucode_disassembly().c_str());
+  std::fclose(f);
+}
+struct RegisterRestore {
+  rex::graphics::RegisterFile* registers = nullptr;
+  uint32_t index = 0, value = 0;
+  ~RegisterRestore() {
+    if (registers) (*registers)[index] = value;
+  }
+};
+}  // namespace tt_t3
+"""
+edit(CP, (
+    "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n",
+    "  // tt-android T3: shader listings and shader tests\n"
+    "  tt_t3::Dump(*vertex_shader, \"vertex shader\");\n"
+    "  if (pixel_shader) tt_t3::Dump(*pixel_shader, \"pixel shader\");\n"
+    "  tt_t3::RegisterRestore tt_t3_restore;\n"
+    "  if (pixel_shader && !tt_t3::Mode().empty()) {\n"
+    "    const uint32_t ps = uint32_t(pixel_shader->ucode_data_hash());\n"
+    "    const std::string& mode = tt_t3::Mode();\n"
+    "    if ((mode == \"hide_5c7a\" && ps == 0x5C7A942Fu) || (mode == \"hide_2cf2\" && ps == 0x2CF2B765u) ||\n"
+    "        (mode == \"hide_8a14\" && ps == 0x8A141C27u)) {\n"
+    "      return true;\n"
+    "    }\n"
+    "    if (mode == \"noalpha_5c7a\" && ps == 0x5C7A942Fu) {\n"
+    "      tt_t3_restore.registers = register_file_;\n"
+    "      tt_t3_restore.index = XE_GPU_REG_RB_COLORCONTROL;\n"
+    "      tt_t3_restore.value = (*register_file_)[XE_GPU_REG_RB_COLORCONTROL];\n"
+    "      auto colorcontrol = regs.Get<reg::RB_COLORCONTROL>();\n"
+    "      colorcontrol.alpha_test_enable = 0;\n"
+    "      colorcontrol.alpha_to_mask_enable = 0;\n"
+    "      (*register_file_)[XE_GPU_REG_RB_COLORCONTROL] = colorcontrol.value;\n"
+    "    }\n"
+    "  }\n"
+    "  static const bool tt_skip_passes = std::getenv(\"TT_DRAW_ALL_PASSES\") == nullptr;\n"),
+    prelude=TT_T3, includes=("#include <mutex>", "#include <set>", "#include <string>"))
+done.append("T3 heavy-shader tests and microcode listings (renderer branch)")
+
 print("\n".join(done))

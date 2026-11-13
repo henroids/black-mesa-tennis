@@ -51,6 +51,7 @@ public final class GameActivity extends SDLActivity {
         setEnv("HOME", base.getAbsolutePath());
         if (settings.hiddenPasses == 1) setEnv("TT_DRAW_ALL_PASSES", "1");
         if (settings.renderer == 1) setEnv("TT_RENDERER", "new");
+        if (settings.test > 0) setEnv("TT_TEST", Settings.TEST_VALUES[settings.test]);
         // The "Loading main menu" screen (drawn natively) uses the start screen's pixel font.
         File uiFont = copyAsset("fonts/GamePocket-Regular.ttf", new File(getFilesDir(), "GamePocket-Regular.ttf"));
         if (uiFont != null) setEnv("TT_UI_FONT", uiFont.getAbsolutePath());
