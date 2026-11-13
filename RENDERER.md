@@ -21,19 +21,13 @@ Go back to the normal app's build:
 | Step | What | State |
 |---|---|---|
 | C1 | **Census**: which GPU features the game uses (`census.txt` in the logs, rewritten every 10 s). Draws exactly as the normal app. | **Done** (results below) |
-| C2 | **Plug-in skeleton**: `librexgpu-tt.so` (`stage2/renderer/`), loaded through the SDK's `gpu_plugin` seam when the start screen says **Renderer: New**. It forwards every call to the SDK renderer, so New must look and run exactly like Old; the test is only that it builds, loads and plays. | **Build ready, waiting for logs** |
+| C2 | **Plug-in skeleton**: `librexgpu-tt.so` (`stage2/renderer/`), loaded through the SDK's `gpu_plugin` seam when the start screen says **Renderer: New**. It forwards every call to the SDK renderer, so New must look and run exactly like Old; the test is only that it builds, loads and plays. | **Done**: Thor, Turnip Gen8 V39, 720p, FXAA, Renderer New: plug-in loaded, 60 FPS, GPU ~80-89 % busy @ 680 MHz, same as Old |
 | C3 | Own command processor in the plug-in: reads the game's command stream itself, shows the picture through its own swap path | — |
 | C4 | Render targets as plain Vulkan images (no EDRAM), resolves as image copies | — |
 | C5 | Shaders translated once to lean SPIR-V with real vertex inputs; vertex/index data in real buffers | — |
 | C6 | Textures, effects, menus; compare every venue against Old | — |
 
 Each step keeps the **Renderer: Old / New** row, so anything can be compared with the SDK renderer.
-
-### Testing C2
-
-1. Build and install the test app (command above).
-2. Start screen: **Renderer → New**. Play a few points, then quit.
-3. Export the logs. The game log should contain `tt-renderer: new renderer plug-in loaded`.
 
 ## C1 result: what the game asks of the GPU
 
