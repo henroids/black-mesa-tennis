@@ -97,7 +97,7 @@ public final class LauncherActivity extends Activity {
 
     // Boxed settings so Choice rows can edit them in place.
     private final int[] resolution = new int[1], aa = new int[1], showFps = new int[1],
-            driver = new int[1], perfLog = new int[1], hiddenPasses = new int[1];
+            driver = new int[1], perfLog = new int[1], hiddenPasses = new int[1], renderer = new int[1];
     private List<String> driverIds = new ArrayList<>();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -115,6 +115,7 @@ public final class LauncherActivity extends Activity {
         showFps[0] = settings.showFps ? 1 : 0;
         perfLog[0] = settings.perfLog ? 1 : 0;
         hiddenPasses[0] = settings.hiddenPasses;
+        renderer[0] = settings.renderer;
         loadDrivers();
         buildRows();
         buildScreen();
@@ -184,6 +185,7 @@ public final class LauncherActivity extends Activity {
             @Override void activate() { removeDriver(); }
         });
         rows.add(new Choice("Hidden passes", Settings.HIDDEN_PASS_LABELS, hiddenPasses, save));
+        rows.add(new Choice("Renderer", Settings.RENDERER_LABELS, renderer, save));
         rows.add(new Choice("Performance log", new String[]{"Off", "On"}, perfLog, save));
         rows.add(new Row("Export logs") {
             @Override void activate() { exportLogs(); }
@@ -199,6 +201,7 @@ public final class LauncherActivity extends Activity {
         settings.showFps = showFps[0] == 1;
         settings.perfLog = perfLog[0] == 1;
         settings.hiddenPasses = hiddenPasses[0];
+        settings.renderer = renderer[0];
         settings.save(this);
     }
 

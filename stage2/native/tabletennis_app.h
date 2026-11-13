@@ -387,6 +387,9 @@ class TabletennisApp : public rex::ReXApp {
 #endif
     rex::cvar::SetFlagByName("protect_zero", "false");
     rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+    if (const char* renderer = std::getenv("TT_RENDERER"); renderer && std::string_view(renderer) == "new") {
+      config.gpu_plugin = "tt";  // branch `renderer`: this project's own plug-in (RENDERER.md)
+    }
     if (config.gpu_plugin.empty()) {
       config.gpu_plugin = "xenos";
     }

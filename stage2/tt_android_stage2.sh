@@ -48,6 +48,7 @@ cp "$KIT2/native/main.cpp" "$P/src/main.cpp"                   # sleep-based fra
 cp "$KIT2/native/tabletennis_app.h" "$P/src/tabletennis_app.h" # no second limiter on the UI thread
 cp "$KIT2/native/CMakeLists.txt" "$P/CMakeLists.txt"           # -Bsymbolic-functions for libmain
 cp "$KIT2/native/tt_profiler.cpp" "$P/src/tt_profiler.cpp"     # built-in sampling profiler
+mkdir -p "$P/renderer" && cp "$KIT2/renderer/"*.cpp "$P/renderer/"   # own renderer plug-in (branch renderer)
 python3 "$KIT2/native/patch_game_msaa.py" "$P/generated/default" > "$LOGS/02-game-edits.log" 2>&1 \
   || fail "game MSAA edit did not apply (logs2/02-game-edits.log)"
 python3 "$KIT2/native/patch_game_gpu_wait.py" "$P/generated/default" >> "$LOGS/02-game-edits.log" 2>&1 \
@@ -107,7 +108,7 @@ cp -r "$KIT2/app/res/." "$APP/app/src/main/res/"
 # native libraries
 J="$APP/app/jniLibs/arm64-v8a"
 SDKOUT="$REXSDK_DIR/out/android-arm64"
-cp "$OUT/libmain.so" "$SDKOUT/librexruntime.so" "$SDKOUT/librexgpu-xenos.so" "$J/" || fail "native libraries missing"
+cp "$OUT/libmain.so" "$OUT/librexgpu-tt.so" "$SDKOUT/librexruntime.so" "$SDKOUT/librexgpu-xenos.so" "$J/" || fail "native libraries missing"
 for h in main_hook hook_impl file_redirect_hook gsl_alloc_hook; do
   cp "$OUT/third_party/libadrenotools/src/hook/lib$h.so" "$J/" || fail "adrenotools hook lib$h.so missing"
 done

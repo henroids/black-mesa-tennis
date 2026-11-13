@@ -37,6 +37,17 @@ if(ANDROID)
     target_link_libraries(rexruntime PRIVATE adrenotools)
 endif()
 
+if(ANDROID)
+    # Branch `renderer`: this project's own renderer plug-in (librexgpu-tt.so), loaded through
+    # the SDK's GPU plug-in seam when the start screen says Renderer: New. See RENDERER.md.
+    add_library(rexgpu-tt SHARED renderer/plugin_main.cpp)
+    set_target_properties(rexgpu-tt PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    target_link_libraries(rexgpu-tt PRIVATE rexruntime)
+endif()
+
 set(TABLETENNIS_SOURCES
     src/main.cpp
     src/intro_skip.cpp

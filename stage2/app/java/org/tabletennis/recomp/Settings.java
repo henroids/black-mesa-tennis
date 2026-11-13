@@ -23,6 +23,10 @@ final class Settings {
     static final String[] HIDDEN_PASS_LABELS = {"Skipped (faster)", "Drawn (original)"};
     int hiddenPasses = 0;
 
+    // Branch `renderer` only: which renderer draws the game (RENDERER.md).
+    static final String[] RENDERER_LABELS = {"Old", "New"};
+    int renderer = 0;
+
     private static final String PREFS = "tt_settings";
 
     int resolution = 0;
@@ -38,6 +42,7 @@ final class Settings {
         s.showFps = p.getBoolean("show_fps", true);
         s.perfLog = p.getBoolean("perf_log", true);
         s.hiddenPasses = clamp(p.getInt("hidden_passes", 0), HIDDEN_PASS_LABELS.length);
+        s.renderer = clamp(p.getInt("renderer", 0), RENDERER_LABELS.length);
         return s;
     }
 
@@ -48,6 +53,7 @@ final class Settings {
                 .putBoolean("show_fps", showFps)
                 .putBoolean("perf_log", perfLog)
                 .putInt("hidden_passes", hiddenPasses)
+                .putInt("renderer", renderer)
                 .commit();
     }
 
@@ -58,6 +64,7 @@ final class Settings {
                 + " | Show FPS: " + (showFps ? "On" : "Off")
                 + " | GPU driver: " + driver
                 + " | Hidden passes: " + HIDDEN_PASS_LABELS[hiddenPasses]
+                + " | Renderer: " + RENDERER_LABELS[renderer]
                 + " | Performance log: " + (perfLog ? "On" : "Off");
     }
 
