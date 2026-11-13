@@ -144,8 +144,8 @@ step "4/5 Building the APK with Gradle (first time downloads Gradle, ~5-10 min)"
   || { grep -nE "error:|FAILURE|What went wrong" -A4 "$LOGS/04-gradle.log" | head -120 > "$LOGS/04-gradle-errors.txt"; fail "Gradle build failed (logs2/04-gradle-errors.txt)"; }
 APK="$APP/app/build/outputs/apk/debug/app-debug.apk"
 [ -f "$APK" ] || fail "APK not produced"
-cp "$APK" "$WORK/TableTennis.apk"
-echo "  built $(du -h "$WORK/TableTennis.apk" | cut -f1) APK"
+cp "$APK" "$WORK/TableTennis-renderer-test.apk"
+echo "  built $(du -h "$WORK/TableTennis-renderer-test.apk" | cut -f1) APK (renderer test app)"
 
 # ---------------------------------------------------------------- 5
 step "5/5 Copying the APK to Windows"
@@ -155,12 +155,12 @@ if [ -n "$WINPROFILE" ] && command -v wslpath >/dev/null; then
   DEST="$(wslpath "$WINPROFILE")/Downloads"
 fi
 package_logs
-if [ -n "$DEST" ] && [ -d "$DEST" ] && cp "$WORK/TableTennis.apk" "$DEST/TableTennis.apk"; then
-  echo "  copied to your Windows Downloads folder: TableTennis.apk"
+if [ -n "$DEST" ] && [ -d "$DEST" ] && cp "$WORK/TableTennis-renderer-test.apk" "$DEST/TableTennis-renderer-test.apk"; then
+  echo "  copied to your Windows Downloads folder: TableTennis-renderer-test.apk"
 else
   echo "  could not find your Downloads folder automatically; run:"
-  echo "  cp ~/tt-android/TableTennis.apk /mnt/c/Users/YOURNAME/Downloads/"
+  echo "  cp ~/tt-android/TableTennis-renderer-test.apk /mnt/c/Users/YOURNAME/Downloads/"
 fi
 echo
-echo "Stage 2 complete. Install TableTennis.apk on the Thor."
+echo "Stage 2 complete. Install TableTennis-renderer-test.apk (renderer branch test app)."
 echo "(Logs, if needed: $WORK/tt-stage2-logs.zip)"

@@ -9,7 +9,8 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'org.tabletennis.recomp'
+        // Renderer branch: a separate test app, installed next to the normal one.
+        applicationId 'org.tabletennis.recomp.renderertest'
         minSdk 29
         targetSdk 35
         versionCode 1

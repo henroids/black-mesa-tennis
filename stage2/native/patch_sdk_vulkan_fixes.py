@@ -1507,4 +1507,183 @@ edit("src/graphics/vulkan/pipeline_cache.cpp", (
               "#include <thread>", "#include <vector>"))
 done.append("F19 persistent Vulkan pipeline cache")
 
+
+# ============================================================ RENDERER BRANCH: C1 census
+# Step 1 of the own-renderer project (branch "renderer", separate test app). Records which
+# features of the Xbox 360 GPU this game actually uses, so the new renderer's scope is known:
+# primitive types, shaders and their features, vertex formats, texture formats and
+# dimensions, render-target setups, EDRAM ownership transfers, resolves. Written to
+# <logs>/census.txt every 10 s (whole session so far). Changes nothing that is drawn.
+TT_CENSUS = r"""
+// tt-android C1: census of the GPU features this game uses (renderer branch).
+#include <cstdio>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
+namespace tt_census {
+inline std::mutex& Mutex() { static std::mutex m; return m; }
+inline std::map<std::string, std::map<std::string, uint64_t>>& Tables() {
+  static std::map<std::string, std::map<std::string, uint64_t>> t;
+  return t;
+}
+inline std::set<uint64_t>& Seen(const char* name) {
+  static std::map<std::string, std::set<uint64_t>> s;
+  return s[name];
+}
+inline void Count(const char* table, const std::string& key, uint64_t n = 1) {
+  std::lock_guard<std::mutex> lock(Mutex());
+  Tables()[table][key] += n;
+}
+// Counts a distinct item once (by id) under `table`, e.g. unique shaders.
+inline bool Once(const char* table, uint64_t id, const std::string& key) {
+  std::lock_guard<std::mutex> lock(Mutex());
+  if (!Seen(table).insert(id).second) return false;
+  Tables()[table][key] += 1;
+  return true;
+}
+inline std::string Fmt(const char* format, ...) {
+  char buffer[512];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+  return buffer;
+}
+inline void MaybeWrite() {
+  static auto last = std::chrono::steady_clock::now();
+  static const auto start = last;
+  const auto now = std::chrono::steady_clock::now();
+  if (now - last < std::chrono::seconds(10)) return;
+  last = now;
+  const char* dir = std::getenv("TT_PROFILE");
+  if (!dir) return;
+  std::lock_guard<std::mutex> lock(Mutex());
+  FILE* f = std::fopen((std::string(dir) + "/census.txt").c_str(), "w");
+  if (!f) return;
+  std::fprintf(f, "GPU feature census, %lld s of session so far (counts are draws unless the table "
+                  "says otherwise)\n",
+               (long long)std::chrono::duration_cast<std::chrono::seconds>(now - start).count());
+  for (const auto& [table, rows] : Tables()) {
+    std::vector<std::pair<uint64_t, std::string>> sorted;
+    for (const auto& [key, count] : rows) sorted.emplace_back(count, key);
+    std::sort(sorted.rbegin(), sorted.rend());
+    std::fprintf(f, "\n== %s (%zu distinct)\n", table.c_str(), sorted.size());
+    size_t shown = 0;
+    for (const auto& [count, key] : sorted) {
+      if (++shown > 80) { std::fprintf(f, "  ... %zu more\n", sorted.size() - 80); break; }
+      std::fprintf(f, "  %10llu  %s\n", (unsigned long long)count, key.c_str());
+    }
+  }
+  std::fclose(f);
+}
+}  // namespace tt_census
+"""
+TT_CENSUS_INCLUDES = ("#include <algorithm>", "#include <chrono>", "#include <cstdarg>",
+                      "#include <cstdio>", "#include <cstdlib>", "#include <vector>")
+edit(CP, (
+    "  uint32_t ps_param_gen_pos = UINT32_MAX;\n"
+    "  uint32_t interpolator_mask =\n",
+    "  {  // tt-android C1: census of this draw\n"
+    "    using namespace tt_census;\n"
+    "    const auto surface = regs.Get<reg::RB_SURFACE_INFO>();\n"
+    "    Count(\"primitive types\", Fmt(\"type %u, %s\", uint32_t(prim_type),\n"
+    "                                  index_buffer_info ? \"indexed\" : \"not indexed\"));\n"
+    "    if (memexport_used_vertex || memexport_used_pixel) {\n"
+    "      Count(\"memexport draws\", memexport_used_pixel ? \"pixel shader\" : \"vertex shader\");\n"
+    "    }\n"
+    "    Once(\"vertex shaders (unique)\", vertex_shader->ucode_data_hash(),\n"
+    "         Fmt(\"%zu vertex bindings%s\", vertex_shader->vertex_bindings().size(),\n"
+    "             vertex_shader->uses_register_dynamic_addressing() ? \", dynamic addressing\" : \"\"));\n"
+    "    if (pixel_shader) {\n"
+    "      Once(\"pixel shaders (unique)\", pixel_shader->ucode_data_hash(),\n"
+    "           Fmt(\"%zu textures%s%s%s\", pixel_shader->texture_bindings().size(),\n"
+    "               pixel_shader->kills_pixels() ? \", kills pixels\" : \"\",\n"
+    "               pixel_shader->writes_depth() ? \", writes depth\" : \"\",\n"
+    "               pixel_shader->uses_register_dynamic_addressing() ? \", dynamic addressing\" : \"\"));\n"
+    "    } else {\n"
+    "      Count(\"draws without a pixel shader\", \"depth only\");\n"
+    "    }\n"
+    "    for (const auto& binding : vertex_shader->vertex_bindings()) {\n"
+    "      for (const auto& attribute : binding.attributes) {\n"
+    "        Count(\"vertex formats (attributes fetched)\",\n"
+    "              Fmt(\"format %u\", uint32_t(attribute.fetch_instr.attributes.data_format)));\n"
+    "      }\n"
+    "    }\n"
+    "    for (const VulkanShader* shader : {vertex_shader, pixel_shader}) {\n"
+    "      if (!shader) continue;\n"
+    "      for (const auto& binding : shader->texture_bindings()) {\n"
+    "        const xenos::xe_gpu_texture_fetch_t fetch = regs.GetTextureFetch(binding.fetch_constant);\n"
+    "        Count(\"textures sampled (format, fetch dimension, size, tiled, mips)\",\n"
+    "              Fmt(\"%s: format %u, dim %u, %ux%u, tiled %u, mips %u-%u\",\n"
+    "                  shader == vertex_shader ? \"VS\" : \"PS\", uint32_t(fetch.format),\n"
+    "                  uint32_t(binding.fetch_instr.dimension), fetch.size_2d.width + 1,\n"
+    "                  fetch.size_2d.height + 1, uint32_t(fetch.tiled), uint32_t(fetch.mip_min_level),\n"
+    "                  uint32_t(fetch.mip_max_level)));\n"
+    "      }\n"
+    "    }\n"
+    "    const uint32_t color_mask =\n"
+    "        pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
+    "                     : 0;\n"
+    "    std::string targets = Fmt(\"pitch %u, msaa %u:\", uint32_t(surface.surface_pitch),\n"
+    "                              uint32_t(surface.msaa_samples));\n"
+    "    for (uint32_t i = 0; i < 4; ++i) {\n"
+    "      if (!((color_mask >> (i * 4)) & 0xF)) continue;\n"
+    "      const auto color_info = regs.Get<reg::RB_COLOR_INFO>(reg::RB_COLOR_INFO::rt_register_indices[i]);\n"
+    "      targets += Fmt(\" C%u fmt %u base %u\", i, uint32_t(color_info.color_format),\n"
+    "                     uint32_t(color_info.color_base));\n"
+    "    }\n"
+    "    if (normalized_depth_control.z_enable || normalized_depth_control.stencil_enable) {\n"
+    "      const auto depth_info = regs.Get<reg::RB_DEPTH_INFO>();\n"
+    "      targets += Fmt(\" D fmt %u base %u%s\", uint32_t(depth_info.depth_format),\n"
+    "                     uint32_t(depth_info.depth_base),\n"
+    "                     normalized_depth_control.z_write_enable ? \" write\" : \"\");\n"
+    "    }\n"
+    "    Count(\"render-target setups\", targets);\n"
+    "    MaybeWrite();\n"
+    "  }\n"
+    "  uint32_t ps_param_gen_pos = UINT32_MAX;\n"
+    "  uint32_t interpolator_mask =\n"),
+    prelude=TT_CENSUS, includes=TT_CENSUS_INCLUDES)
+edit("src/graphics/vulkan/render_target_cache.cpp", (
+    "  // Nothing to copy/clear.\n",
+    "  {  // tt-android C1: census of resolves\n"
+    "    using namespace tt_census;\n"
+    "    const auto& d = resolve_info.copy_dest_info;\n"
+    "    const auto& e = resolve_info.IsCopyingDepth() ? resolve_info.depth_edram_info\n"
+    "                                                  : resolve_info.color_edram_info;\n"
+    "    Count(\"resolves (source -> destination)\",\n"
+    "          Fmt(\"%s fmt %u msaa %u pitch %u tiles -> %ux%u dest fmt %u endian %u swap %u, %s, \"\n"
+    "              \"sample select %u%s\",\n"
+    "              resolve_info.IsCopyingDepth() ? \"depth\" : \"colour\", uint32_t(e.format),\n"
+    "              uint32_t(e.msaa_samples), uint32_t(e.pitch_tiles),\n"
+    "              uint32_t(resolve_info.coordinate_info.width_div_8) * 8,\n"
+    "              resolve_info.height_div_8 * 8, uint32_t(d.copy_dest_format),\n"
+    "              uint32_t(d.copy_dest_endian), uint32_t(d.copy_dest_swap),\n"
+    "              resolve_info.copy_dest_extent_length ? \"copy\" : \"clear only\",\n"
+    "              uint32_t(resolve_info.rb_copy_control.copy_sample_select),\n"
+    "              resolve_info.rb_copy_control.color_clear_enable ||\n"
+    "                      resolve_info.rb_copy_control.depth_clear_enable\n"
+    "                  ? \", clears\"\n"
+    "                  : \"\"));\n"
+    "  }\n"
+    "  // Nothing to copy/clear.\n"), (
+    "  bool resolve_clear_needed = render_target_resolve_clear_values && resolve_clear_rectangle;\n",
+    "  for (uint32_t i = 0; i < render_target_count; ++i) {  // tt-android C1: census of transfers\n"
+    "    if (!render_targets[i]) continue;\n"
+    "    for (const Transfer& transfer : render_target_transfers[i]) {\n"
+    "      const RenderTargetKey dk = render_targets[i]->key();\n"
+    "      const RenderTargetKey sk = transfer.source->key();\n"
+    "      tt_census::Count(\"EDRAM ownership transfers (source -> destination)\",\n"
+    "                       tt_census::Fmt(\"%s fmt %u msaa %u pitch %u -> %s fmt %u msaa %u pitch %u\",\n"
+    "                                      sk.is_depth ? \"depth\" : \"colour\", sk.resource_format,\n"
+    "                                      uint32_t(sk.msaa_samples), sk.pitch_tiles_at_32bpp,\n"
+    "                                      dk.is_depth ? \"depth\" : \"colour\", dk.resource_format,\n"
+    "                                      uint32_t(dk.msaa_samples), dk.pitch_tiles_at_32bpp));\n"
+    "    }\n"
+    "  }\n"
+    "  bool resolve_clear_needed = render_target_resolve_clear_values && resolve_clear_rectangle;\n"),
+    prelude=TT_CENSUS, includes=TT_CENSUS_INCLUDES)
+done.append("C1 census (renderer branch)")
+
 print("\n".join(done))
