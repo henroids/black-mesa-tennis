@@ -22,7 +22,8 @@ Go back to the normal app's build:
 |---|---|---|
 | C1 | **Census**: which GPU features the game uses. The census code is removed again. | **Done** (results below) |
 | C2 | **Plug-in skeleton**: `librexgpu-tt.so` (`stage2/renderer/`), loaded through the SDK's `gpu_plugin` seam when the start screen says **Renderer: New**. It forwards every call to the SDK renderer, so New must look and run exactly like Old; the test is only that it builds, loads and plays. | **Done**: Thor, Turnip Gen8 V39, 720p, FXAA, Renderer New: plug-in loaded, 60 FPS, GPU ~80-89 % busy @ 680 MHz, same as Old |
-| T1 | **GPU time per pass**: timestamps at every render-pass begin and end; `gpu_time.txt` in the logs lists, per 10 s, how many ms of each frame the GPU spends in each pass, in the copies after it, in the present step, and waiting. Draws exactly as before. Decides which part of the renderer to replace first. | **Build ready, waiting for logs** |
+| T1 | **GPU time per pass**: timestamps at every render-pass begin and end (`gpu_time.txt` in the logs, one block per 10 s). Draws exactly as before. | **Done** (results below) |
+| T2 | **GPU time per shader pair**: one more timestamp in front of every draw, so the main scene's time is split by vertex/pixel shader pair, and one at every mid-frame submission so GPU idle time is separated from work. The timestamps themselves slow the GPU a little, so this build may not hold 60 FPS. | **Build ready, waiting for logs** |
 | C3 | Own command processor in the plug-in: reads the game's command stream itself, shows the picture through its own swap path | — |
 | C4 | Render targets as plain Vulkan images (no EDRAM), resolves as image copies | — |
 | C5 | Shaders translated once to lean SPIR-V with real vertex inputs; vertex/index data in real buffers | — |
@@ -35,11 +36,29 @@ on the Thor, nearly half of it asleep, and its biggest single cost is memory pag
 (9 %), not render-target emulation. So the remaining load is on the GPU itself, and until now
 its split was only estimated by switching things off. T1 measures it directly.
 
-### Testing T1
+### Testing T2
 
 1. Build and install the test app (command above).
 2. Renderer can stay on either setting. Play one match of at least two minutes, then quit.
-3. Export the logs (they now contain `game_gpu_time.txt`).
+3. Export the logs (`game_gpu_time.txt`).
+
+## T1 result: where the GPU's frame goes
+
+AYN Thor (Adreno 740, Turnip Gen8 V39), 720p, FXAA, Hidden passes Skipped, in a match at 60 FPS
+(16.7 ms per frame), 2026-11-13. Typical 10-second block:
+
+| Part of the frame | GPU time | Notes |
+|---|---|---|
+| Main scene, the two 1280-wide passes | 8.3 ms | ~400 draws, ~275,000 vertices, begun 9-10 times per frame |
+| One gap after a main-scene pass, once per frame | 3.3 ms | No draws. Probably mostly the GPU waiting for the game's next batch of commands (T2 separates this) |
+| Copies after the main-scene passes | 1.3 ms | 6-7 full-screen copies per frame |
+| Effect buffers (640 / 320 / 160 wide), all passes together | ~1.5 ms | |
+| Shadow buffer (1440 wide) | ~0.3 ms | |
+| Present (FXAA, gamma, to the screen) | 0.3 ms | |
+| GPU waiting between frames | 0.7 ms | |
+
+So the main scene's ~400 draws are half of the frame and the first target; effects, shadows and
+the present step are small.
 
 ## C1 result: what the game asks of the GPU
 

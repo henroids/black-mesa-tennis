@@ -1566,6 +1566,8 @@ struct State {
   std::map<uint64_t, uint32_t> framebuffers;
   std::vector<Row> rows;
   uint32_t current = 0;
+  bool in_pass = false;
+  std::string pass_name, pass_short;
   uint64_t frames = 0, unavailable = 0;
   bool file_started = false;
   std::chrono::steady_clock::time_point start, last;
@@ -1608,16 +1610,29 @@ inline void StampPass(Buffer& buffer, uint64_t framebuffer, uint32_t width, uint
   if (it == s.framebuffers.end()) {
     it = s.framebuffers.emplace(framebuffer, uint32_t(s.framebuffers.size()) + 1).first;
   }
-  Stamp(buffer, Fmt("%s #%u %ux%u, pitch %u, msaa %u, colour base %u", kind, it->second, width,
-                    height, pitch, msaa, color_base));
+  s.pass_name = Fmt("%s #%u %ux%u, pitch %u, msaa %u, colour base %u", kind, it->second, width,
+                    height, pitch, msaa, color_base);
+  s.pass_short = Fmt("#%u", it->second);
+  s.in_pass = true;
+  Stamp(buffer, s.pass_name + " (before its first draw)");
+}
+// T2: one timestamp in front of every draw, so the time is booked per shader pair.
+template <typename Buffer>
+inline void StampDraw(Buffer& buffer, uint64_t vs, uint64_t ps, size_t textures, bool kills,
+                      bool alpha_test, bool z_test, bool z_write) {
+  State& s = S();
+  if (!s.ok || !s.in_pass) return;
+  Stamp(buffer, Fmt("    draws in %s: VS %08X PS %08X, %zu textures%s%s%s%s", s.pass_short.c_str(),
+                    uint32_t(vs), uint32_t(ps), textures, kills ? ", discards" : "",
+                    alpha_test ? ", alpha test" : "", z_test ? ", z test" : "",
+                    z_write ? ", z write" : ""));
 }
 template <typename Buffer>
 inline void StampAfterPass(Buffer& buffer) {
   State& s = S();
-  if (!s.ok || s.names.empty()) return;
-  const std::string& name = s.names[s.current];
-  if (name.compare(0, 4, "pass") != 0 && name.compare(0, 8, "transfer") != 0) return;
-  Stamp(buffer, "  after " + name + " (copies, uploads)");
+  if (!s.ok || !s.in_pass) return;
+  s.in_pass = false;
+  Stamp(buffer, "  after " + s.pass_name + " (copies, uploads)");
 }
 inline void Draw(bool depth_only, uint32_t vertices) {
   State& s = S();
@@ -1645,7 +1660,7 @@ inline void MaybeWrite() {
       std::vector<std::pair<double, uint32_t>> sorted;
       for (uint32_t i = 0; i < s.rows.size(); ++i) {
         if (!s.rows[i].intervals) continue;
-        if (s.names[i].compare(0, 14, "between frames") == 0) waiting += s.rows[i].ns;
+        if (s.names[i].compare(0, 8, "between ") == 0) waiting += s.rows[i].ns;
         else total += s.rows[i].ns;
         sorted.emplace_back(s.rows[i].ns, i);
       }
@@ -1659,6 +1674,7 @@ inline void MaybeWrite() {
                    (unsigned long long)s.unavailable);
       for (const auto& [ns, i] : sorted) {
         const Row& row = s.rows[i];
+        if (ns / frames < 5000.0) continue;  // under 0.005 ms per frame
         std::fprintf(f, "  %6.2f ms | x%5.1f | %6.1f draws (%5.1f) | %7.0f verts | %s\n",
                      ns / frames / 1e6, double(row.intervals) / frames, double(row.draws) / frames,
                      double(row.depth_only_draws) / frames, double(row.vertices) / frames,
@@ -1768,7 +1784,28 @@ edit(CP, (
     "                    primitive_processing_result.host_draw_vertex_count);\n"
     "  if (!memexport_ranges_.empty()) {\n"
     "    for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {\n"
-    "      shared_memory_->RangeWrittenByGpu(memexport_range.base_address_dwords << 2,\n"),
+    "      shared_memory_->RangeWrittenByGpu(memexport_range.base_address_dwords << 2,\n"), (
+    "  // Draw.\n"
+    "  if (primitive_processing_result.index_buffer_type ==\n",
+    "  tt_gpu_time::StampDraw(  // tt-android T2\n"
+    "      deferred_command_buffer_, vertex_shader->ucode_data_hash(),\n"
+    "      pixel_shader ? pixel_shader->ucode_data_hash() : 0,\n"
+    "      pixel_shader ? pixel_shader->texture_bindings().size() : 0,\n"
+    "      pixel_shader && pixel_shader->kills_pixels(),\n"
+    "      regs.Get<reg::RB_COLORCONTROL>().alpha_test_enable != 0,\n"
+    "      normalized_depth_control.z_enable != 0, normalized_depth_control.z_write_enable != 0);\n"
+    "  // Draw.\n"
+    "  if (primitive_processing_result.index_buffer_type ==\n"), (
+    "    EndRenderPass();\n"
+    "\n"
+    "    pipeline_cache_->EndSubmission();\n",
+    "    EndRenderPass();\n"
+    "    if (!is_swap) {  // tt-android T2\n"
+    "      tt_gpu_time::Stamp(deferred_command_buffer_,\n"
+    "                         \"between submissions (GPU waiting for the game, then uploads)\");\n"
+    "    }\n"
+    "\n"
+    "    pipeline_cache_->EndSubmission();\n"),
     prelude=TT_GPU_TIME, includes=TT_GPU_TIME_INCLUDES)
 # Both pass-begin functions (normal and ownership-transfer): the same line, twice.
 _path = sdk / CP
@@ -1790,6 +1827,6 @@ _second = _text.index(_old, _first) + len(_old)
 _text = (_text[:_first] + _stamp % "pass" + _text[_first:_second] + _stamp % "transfer pass"
          + _text[_second:])
 _path.write_text(_text)
-done.append("T1 GPU time per render pass (renderer branch)")
+done.append("T1/T2 GPU time per render pass and per shader pair (renderer branch)")
 
 print("\n".join(done))
