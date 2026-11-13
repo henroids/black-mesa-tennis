@@ -44,7 +44,7 @@ AYN Thor (Adreno 740, Turnip Gen8 V39), 720p, FXAA, Hidden passes Skipped, 460 s
 |---|---|---|
 | Shaders | 56 vertex shaders (29 with one vertex stream, 27 with two), 67 pixel shaders (0-21 textures; 2 write depth) | Small enough to translate and check one by one |
 | Vertex data | 5 vertex layouts in total | Real vertex inputs are practical (no generic fetch code in every shader) |
-| Geometry | Triangle lists (most draws, mostly indexed), triangle fans, triangle strips, rectangle lists, quad lists | Rectangles and quads need converting; the rest is native |
+| Geometry | Triangle strips (about 80 % of draws, mostly indexed), triangle lists, triangle fans, rectangle lists, quad lists | Fans, rectangles and quads need converting; strips and lists are native |
 | Textures | 60 kinds: DXT1 / DXT3 / DXT5 with mip chains, 8888, the game's own render results, 24-bit depth read back as a texture, two cube/volume lookups | Standard; DXT needs decoding where the GPU lacks it (already done by the SDK) |
 | Render targets | 18 setups: 1280-wide main scene with depth, half / quarter / eighth / sixteenth-size effect buffers (some 4x anti-aliased), two depth-only shadow buffers (1280 and 1440 wide), one two-target case | A short, fixed list: each can be a plain image |
 | Copies out of render targets | 18 kinds: colour to 8888 textures at 1280x720 down to 80x48, depth to depth textures at 1280x720, 1120x704, 640x480, 1440x1280 | All are plain image copies (what F17/F18 already do) |
