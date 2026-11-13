@@ -304,7 +304,8 @@ The owner considers the Thor work finished (60 FPS reached). Open items, in orde
    performance hints (lets Android lower clocks when frames are easy; the NFS Carbon port uses
    it); upstream fix `cf75b896` (vertex buffers at an unchanged address are never re-requested
    in v0.10.0).
-4. **An own PM4-level renderer** (the NFS Carbon route) is the proven way to large further gains
+4. **Started on branch `renderer`** (see `RENDERER.md` there; separate test app, main untouched).
+   **An own PM4-level renderer** (the NFS Carbon route) is the proven way to large further gains
    on this SDK: no game hooks, ~9–10k lines, replaces `rexgpu-xenos` through the `gpu_plugin`
    seam, Xenos backend kept as a fallback. Several weeks of test builds, since nothing can be run
    without the owner's devices. A high-level renderer like the Naruto recomps' (hooking the
