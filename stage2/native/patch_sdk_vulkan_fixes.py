@@ -1508,182 +1508,288 @@ edit("src/graphics/vulkan/pipeline_cache.cpp", (
 done.append("F19 persistent Vulkan pipeline cache")
 
 
-# ============================================================ RENDERER BRANCH: C1 census
-# Step 1 of the own-renderer project (branch "renderer", separate test app). Records which
-# features of the Xbox 360 GPU this game actually uses, so the new renderer's scope is known:
-# primitive types, shaders and their features, vertex formats, texture formats and
-# dimensions, render-target setups, EDRAM ownership transfers, resolves. Written to
-# <logs>/census.txt every 10 s (whole session so far). Changes nothing that is drawn.
-TT_CENSUS = r"""
-// tt-android C1: census of the GPU features this game uses (renderer branch).
+# ============================================================ RENDERER BRANCH: T1 GPU time
+# Renderer branch, separate test app. Measures where the GPU's frame time goes with Vulkan
+# timestamp queries: one timestamp where every render pass begins and ends, at the swap and
+# after it. The time between two timestamps is booked to what ran in between: a pass (named by
+# its framebuffer, size, MSAA and colour base), the copies/uploads after a pass, the present
+# step, or the GPU waiting for the next frame. Written to <logs>/gpu_time.txt, one block per
+# 10 s. Changes nothing that is drawn. (The C1 census that was here is finished and removed;
+# its result is in RENDERER.md.)
+edit("include/rex/ui/vulkan/functions/device_1_0.inc", (
+    "XE_UI_VULKAN_FUNCTION(vkCmdResetQueryPool)\n",
+    "XE_UI_VULKAN_FUNCTION(vkCmdResetQueryPool)\nXE_UI_VULKAN_FUNCTION(vkCmdWriteTimestamp)\n"), (
+    "XE_UI_VULKAN_FUNCTION(vkDestroyQueryPool)\n",
+    "XE_UI_VULKAN_FUNCTION(vkDestroyQueryPool)\nXE_UI_VULKAN_FUNCTION(vkGetQueryPoolResults)\n"))
+edit("include/rex/graphics/vulkan/deferred_command_buffer.h", (
+    "    kVkResetQueryPool,\n",
+    "    kVkResetQueryPool,\n    kTtWriteTimestamp,  // tt-android T1\n"), (
+    "  void CmdVkResetQueryPool(VkQueryPool query_pool, uint32_t first_query, uint32_t query_count) {\n",
+    "  void TtCmdWriteTimestamp(VkQueryPool query_pool, uint32_t query) {  // tt-android T1\n"
+    "    auto& args = *reinterpret_cast<ArgsVkEndQuery*>(\n"
+    "        WriteCommand(Command::kTtWriteTimestamp, sizeof(ArgsVkEndQuery)));\n"
+    "    args.query_pool = query_pool;\n"
+    "    args.query = query;\n"
+    "  }\n"
+    "\n"
+    "  void CmdVkResetQueryPool(VkQueryPool query_pool, uint32_t first_query, uint32_t query_count) {\n"))
+edit("src/graphics/vulkan/deferred_command_buffer.cpp", (
+    "      case Command::kVkResetQueryPool: {\n",
+    "      case Command::kTtWriteTimestamp: {  // tt-android T1\n"
+    "        auto& args = *reinterpret_cast<const ArgsVkEndQuery*>(stream);\n"
+    "        dfn.vkCmdWriteTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,\n"
+    "                                args.query_pool, args.query);\n"
+    "      } break;\n"
+    "\n"
+    "      case Command::kVkResetQueryPool: {\n"))
+TT_GPU_TIME = r"""
+// tt-android T1: GPU time per render pass, from timestamp queries (renderer branch).
 #include <cstdio>
 #include <map>
-#include <mutex>
-#include <set>
 #include <string>
-namespace tt_census {
-inline std::mutex& Mutex() { static std::mutex m; return m; }
-inline std::map<std::string, std::map<std::string, uint64_t>>& Tables() {
-  static std::map<std::string, std::map<std::string, uint64_t>> t;
-  return t;
-}
-inline std::set<uint64_t>& Seen(const char* name) {
-  static std::map<std::string, std::set<uint64_t>> s;
-  return s[name];
-}
-inline void Count(const char* table, const std::string& key, uint64_t n = 1) {
-  std::lock_guard<std::mutex> lock(Mutex());
-  Tables()[table][key] += n;
-}
-// Counts a distinct item once (by id) under `table`, e.g. unique shaders.
-inline bool Once(const char* table, uint64_t id, const std::string& key) {
-  std::lock_guard<std::mutex> lock(Mutex());
-  if (!Seen(table).insert(id).second) return false;
-  Tables()[table][key] += 1;
-  return true;
+namespace tt_gpu_time {
+constexpr uint32_t kPools = 6;      // a pool is read back 5 frames after it was filled
+constexpr uint32_t kQueries = 2048;
+struct Row {
+  double ns = 0;
+  uint64_t intervals = 0, draws = 0, depth_only_draws = 0, vertices = 0;
+};
+struct State {
+  bool tried = false, ok = false;
+  VkQueryPool pools[kPools] = {};
+  std::vector<uint32_t> labels[kPools];
+  bool reset_recorded[kPools] = {};
+  uint32_t pool = 0;
+  double period_ns = 1.0;
+  std::vector<std::string> names;
+  std::map<std::string, uint32_t> ids;
+  std::map<uint64_t, uint32_t> framebuffers;
+  std::vector<Row> rows;
+  uint32_t current = 0;
+  uint64_t frames = 0, unavailable = 0;
+  bool file_started = false;
+  std::chrono::steady_clock::time_point start, last;
+};
+inline State& S() { static State s; return s; }
+inline uint32_t Label(const std::string& name) {
+  State& s = S();
+  auto it = s.ids.find(name);
+  if (it != s.ids.end()) return it->second;
+  uint32_t id = uint32_t(s.names.size());
+  s.names.push_back(name);
+  s.rows.emplace_back();
+  s.ids.emplace(name, id);
+  return id;
 }
 inline std::string Fmt(const char* format, ...) {
-  char buffer[512];
+  char buffer[256];
   va_list args;
   va_start(args, format);
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
   return buffer;
 }
+template <typename Buffer>
+inline void Stamp(Buffer& buffer, const std::string& name) {
+  State& s = S();
+  if (!s.ok || !s.reset_recorded[s.pool]) return;
+  auto& labels = s.labels[s.pool];
+  if (labels.size() >= kQueries) return;
+  buffer.TtCmdWriteTimestamp(s.pools[s.pool], uint32_t(labels.size()));
+  s.current = Label(name);
+  labels.push_back(s.current);
+}
+template <typename Buffer>
+inline void StampPass(Buffer& buffer, uint64_t framebuffer, uint32_t width, uint32_t height,
+                      uint32_t pitch, uint32_t msaa, uint32_t color_base, const char* kind) {
+  State& s = S();
+  if (!s.ok) return;
+  auto it = s.framebuffers.find(framebuffer);
+  if (it == s.framebuffers.end()) {
+    it = s.framebuffers.emplace(framebuffer, uint32_t(s.framebuffers.size()) + 1).first;
+  }
+  Stamp(buffer, Fmt("%s #%u %ux%u, pitch %u, msaa %u, colour base %u", kind, it->second, width,
+                    height, pitch, msaa, color_base));
+}
+template <typename Buffer>
+inline void StampAfterPass(Buffer& buffer) {
+  State& s = S();
+  if (!s.ok || s.names.empty()) return;
+  const std::string& name = s.names[s.current];
+  if (name.compare(0, 4, "pass") != 0 && name.compare(0, 8, "transfer") != 0) return;
+  Stamp(buffer, "  after " + name + " (copies, uploads)");
+}
+inline void Draw(bool depth_only, uint32_t vertices) {
+  State& s = S();
+  if (!s.ok || s.rows.empty()) return;
+  Row& row = s.rows[s.current];
+  ++row.draws;
+  row.depth_only_draws += depth_only;
+  row.vertices += vertices;
+}
 inline void MaybeWrite() {
-  static auto last = std::chrono::steady_clock::now();
-  static const auto start = last;
+  State& s = S();
   const auto now = std::chrono::steady_clock::now();
-  if (now - last < std::chrono::seconds(10)) return;
-  last = now;
+  if (now - s.last < std::chrono::seconds(10)) return;
   const char* dir = std::getenv("TT_PROFILE");
-  if (!dir) return;
-  std::lock_guard<std::mutex> lock(Mutex());
-  FILE* f = std::fopen((std::string(dir) + "/census.txt").c_str(), "w");
-  if (!f) return;
-  std::fprintf(f, "GPU feature census, %lld s of session so far (counts are draws unless the table "
-                  "says otherwise)\n",
-               (long long)std::chrono::duration_cast<std::chrono::seconds>(now - start).count());
-  for (const auto& [table, rows] : Tables()) {
-    std::vector<std::pair<uint64_t, std::string>> sorted;
-    for (const auto& [key, count] : rows) sorted.emplace_back(count, key);
-    std::sort(sorted.rbegin(), sorted.rend());
-    std::fprintf(f, "\n== %s (%zu distinct)\n", table.c_str(), sorted.size());
-    size_t shown = 0;
-    for (const auto& [count, key] : sorted) {
-      if (++shown > 80) { std::fprintf(f, "  ... %zu more\n", sorted.size() - 80); break; }
-      std::fprintf(f, "  %10llu  %s\n", (unsigned long long)count, key.c_str());
+  if (dir && s.frames) {
+    FILE* f = std::fopen((std::string(dir) + "/gpu_time.txt").c_str(), s.file_started ? "a" : "w");
+    if (f) {
+      if (!s.file_started) {
+        std::fprintf(f, "GPU time per frame, from timestamps at every render-pass begin and end.\n"
+                        "Each row: ms per frame | times per frame | draws per frame (of which "
+                        "depth-only) | vertices per frame | what ran.\n");
+      }
+      s.file_started = true;
+      double total = 0, waiting = 0;
+      std::vector<std::pair<double, uint32_t>> sorted;
+      for (uint32_t i = 0; i < s.rows.size(); ++i) {
+        if (!s.rows[i].intervals) continue;
+        if (s.names[i].compare(0, 14, "between frames") == 0) waiting += s.rows[i].ns;
+        else total += s.rows[i].ns;
+        sorted.emplace_back(s.rows[i].ns, i);
+      }
+      std::sort(sorted.rbegin(), sorted.rend());
+      const double frames = double(s.frames);
+      std::fprintf(f, "\n== session %lld-%lld s: %llu frames, GPU working %.2f ms/frame, waiting "
+                      "%.2f ms/frame, %llu timestamps not ready\n",
+                   (long long)std::chrono::duration_cast<std::chrono::seconds>(s.last - s.start).count(),
+                   (long long)std::chrono::duration_cast<std::chrono::seconds>(now - s.start).count(),
+                   (unsigned long long)s.frames, total / frames / 1e6, waiting / frames / 1e6,
+                   (unsigned long long)s.unavailable);
+      for (const auto& [ns, i] : sorted) {
+        const Row& row = s.rows[i];
+        std::fprintf(f, "  %6.2f ms | x%5.1f | %6.1f draws (%5.1f) | %7.0f verts | %s\n",
+                     ns / frames / 1e6, double(row.intervals) / frames, double(row.draws) / frames,
+                     double(row.depth_only_draws) / frames, double(row.vertices) / frames,
+                     s.names[i].c_str());
+      }
+      std::fclose(f);
     }
   }
-  std::fclose(f);
+  for (Row& row : s.rows) row = Row();
+  s.frames = 0;
+  s.unavailable = 0;
+  s.last = now;
 }
-}  // namespace tt_census
+// Once per frame, at the swap, outside any render pass.
+template <typename Buffer, typename Device>
+inline void Frame(Buffer& buffer, const Device* vulkan_device) {
+  State& s = S();
+  const auto& dfn = vulkan_device->functions();
+  VkDevice device = vulkan_device->device();
+  if (!s.tried) {
+    s.tried = true;
+    s.start = s.last = std::chrono::steady_clock::now();
+    VkPhysicalDeviceProperties properties = {};
+    vulkan_device->vulkan_instance()->functions().vkGetPhysicalDeviceProperties(
+        vulkan_device->physical_device(), &properties);
+    s.period_ns = properties.limits.timestampPeriod;
+    s.ok = properties.limits.timestampComputeAndGraphics && s.period_ns > 0;
+    VkQueryPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    pool_info.queryCount = kQueries;
+    for (uint32_t i = 0; s.ok && i < kPools; ++i) {
+      s.ok = dfn.vkCreateQueryPool(device, &pool_info, nullptr, &s.pools[i]) == VK_SUCCESS;
+    }
+    REXLOG_WARN("tt: GPU timestamps {} (period {} ns)", s.ok ? "on" : "not available", s.period_ns);
+    Label("(none)");
+  }
+  if (!s.ok) return;
+  Stamp(buffer, "(end of frame)");
+  s.pool = (s.pool + 1) % kPools;
+  auto& labels = s.labels[s.pool];
+  if (labels.size() > 1) {
+    std::vector<uint64_t> results(labels.size() * 2);
+    VkResult result = dfn.vkGetQueryPoolResults(
+        device, s.pools[s.pool], 0, uint32_t(labels.size()), results.size() * sizeof(uint64_t),
+        results.data(), 2 * sizeof(uint64_t),
+        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    if (result == VK_SUCCESS || result == VK_NOT_READY) {
+      for (size_t i = 0; i + 1 < labels.size(); ++i) {
+        if (!results[2 * i + 1] || !results[2 * i + 3] || results[2 * i + 2] < results[2 * i]) {
+          ++s.unavailable;
+          continue;
+        }
+        Row& row = s.rows[labels[i]];
+        row.ns += double(results[2 * i + 2] - results[2 * i]) * s.period_ns;
+        ++row.intervals;
+      }
+      ++s.frames;
+    }
+  }
+  buffer.CmdVkResetQueryPool(s.pools[s.pool], 0, kQueries);
+  s.reset_recorded[s.pool] = true;
+  labels.clear();
+  Stamp(buffer, "present (anti-aliasing, gamma, to the screen)");
+  MaybeWrite();
+}
+}  // namespace tt_gpu_time
 """
-TT_CENSUS_INCLUDES = ("#include <algorithm>", "#include <chrono>", "#include <cstdarg>",
-                      "#include <cstdio>", "#include <cstdlib>", "#include <vector>")
+TT_GPU_TIME_INCLUDES = ("#include <algorithm>", "#include <chrono>", "#include <cstdarg>",
+                        "#include <cstdio>", "#include <cstdlib>", "#include <vector>")
 edit(CP, (
-    "  uint32_t ps_param_gen_pos = UINT32_MAX;\n"
-    "  uint32_t interpolator_mask =\n",
-    "  {  // tt-android C1: census of this draw\n"
-    "    using namespace tt_census;\n"
-    "    const auto surface = regs.Get<reg::RB_SURFACE_INFO>();\n"
-    "    Count(\"primitive types\", Fmt(\"type %u, %s\", uint32_t(prim_type),\n"
-    "                                  index_buffer_info ? \"indexed\" : \"not indexed\"));\n"
-    "    if (memexport_used_vertex || memexport_used_pixel) {\n"
-    "      Count(\"memexport draws\", memexport_used_pixel ? \"pixel shader\" : \"vertex shader\");\n"
-    "    }\n"
-    "    Once(\"vertex shaders (unique)\", vertex_shader->ucode_data_hash(),\n"
-    "         Fmt(\"%zu vertex bindings%s\", vertex_shader->vertex_bindings().size(),\n"
-    "             vertex_shader->uses_register_dynamic_addressing() ? \", dynamic addressing\" : \"\"));\n"
-    "    if (pixel_shader) {\n"
-    "      Once(\"pixel shaders (unique)\", pixel_shader->ucode_data_hash(),\n"
-    "           Fmt(\"%zu textures%s%s%s\", pixel_shader->texture_bindings().size(),\n"
-    "               pixel_shader->kills_pixels() ? \", kills pixels\" : \"\",\n"
-    "               pixel_shader->writes_depth() ? \", writes depth\" : \"\",\n"
-    "               pixel_shader->uses_register_dynamic_addressing() ? \", dynamic addressing\" : \"\"));\n"
-    "    } else {\n"
-    "      Count(\"draws without a pixel shader\", \"depth only\");\n"
-    "    }\n"
-    "    for (const auto& binding : vertex_shader->vertex_bindings()) {\n"
-    "      for (const auto& attribute : binding.attributes) {\n"
-    "        Count(\"vertex formats (attributes fetched)\",\n"
-    "              Fmt(\"format %u\", uint32_t(attribute.fetch_instr.attributes.data_format)));\n"
-    "      }\n"
-    "    }\n"
-    "    for (const VulkanShader* shader : {vertex_shader, pixel_shader}) {\n"
-    "      if (!shader) continue;\n"
-    "      for (const auto& binding : shader->texture_bindings()) {\n"
-    "        const xenos::xe_gpu_texture_fetch_t fetch = regs.GetTextureFetch(binding.fetch_constant);\n"
-    "        Count(\"textures sampled (format, fetch dimension, size, tiled, mips)\",\n"
-    "              Fmt(\"%s: format %u, dim %u, %ux%u, tiled %u, mips %u-%u\",\n"
-    "                  shader == vertex_shader ? \"VS\" : \"PS\", uint32_t(fetch.format),\n"
-    "                  uint32_t(binding.fetch_instr.dimension), fetch.size_2d.width + 1,\n"
-    "                  fetch.size_2d.height + 1, uint32_t(fetch.tiled), uint32_t(fetch.mip_min_level),\n"
-    "                  uint32_t(fetch.mip_max_level)));\n"
-    "      }\n"
-    "    }\n"
-    "    const uint32_t color_mask =\n"
-    "        pixel_shader ? draw_util::GetNormalizedColorMask(regs, pixel_shader->writes_color_targets())\n"
-    "                     : 0;\n"
-    "    std::string targets = Fmt(\"pitch %u, msaa %u:\", uint32_t(surface.surface_pitch),\n"
-    "                              uint32_t(surface.msaa_samples));\n"
-    "    for (uint32_t i = 0; i < 4; ++i) {\n"
-    "      if (!((color_mask >> (i * 4)) & 0xF)) continue;\n"
-    "      const auto color_info = regs.Get<reg::RB_COLOR_INFO>(reg::RB_COLOR_INFO::rt_register_indices[i]);\n"
-    "      targets += Fmt(\" C%u fmt %u base %u\", i, uint32_t(color_info.color_format),\n"
-    "                     uint32_t(color_info.color_base));\n"
-    "    }\n"
-    "    if (normalized_depth_control.z_enable || normalized_depth_control.stencil_enable) {\n"
-    "      const auto depth_info = regs.Get<reg::RB_DEPTH_INFO>();\n"
-    "      targets += Fmt(\" D fmt %u base %u%s\", uint32_t(depth_info.depth_format),\n"
-    "                     uint32_t(depth_info.depth_base),\n"
-    "                     normalized_depth_control.z_write_enable ? \" write\" : \"\");\n"
-    "    }\n"
-    "    Count(\"render-target setups\", targets);\n"
-    "    MaybeWrite();\n"
+    "  // In case the swap command is the only one in the frame.\n"
+    "  if (!BeginSubmission(true)) {\n"
+    "    REXGPU_ERROR(\"XELOG_GPU PRESENT: BeginSubmission FAILED\");\n"
+    "    return;\n"
+    "  }\n",
+    "  // In case the swap command is the only one in the frame.\n"
+    "  if (!BeginSubmission(true)) {\n"
+    "    REXGPU_ERROR(\"XELOG_GPU PRESENT: BeginSubmission FAILED\");\n"
+    "    return;\n"
     "  }\n"
-    "  uint32_t ps_param_gen_pos = UINT32_MAX;\n"
-    "  uint32_t interpolator_mask =\n"),
-    prelude=TT_CENSUS, includes=TT_CENSUS_INCLUDES)
-edit("src/graphics/vulkan/render_target_cache.cpp", (
-    "  // Nothing to copy/clear.\n",
-    "  {  // tt-android C1: census of resolves\n"
-    "    using namespace tt_census;\n"
-    "    const auto& d = resolve_info.copy_dest_info;\n"
-    "    const auto& e = resolve_info.IsCopyingDepth() ? resolve_info.depth_edram_info\n"
-    "                                                  : resolve_info.color_edram_info;\n"
-    "    Count(\"resolves (source -> destination)\",\n"
-    "          Fmt(\"%s fmt %u msaa %u pitch %u tiles -> %ux%u dest fmt %u endian %u swap %u, %s, \"\n"
-    "              \"sample select %u%s\",\n"
-    "              resolve_info.IsCopyingDepth() ? \"depth\" : \"colour\", uint32_t(e.format),\n"
-    "              uint32_t(e.msaa_samples), uint32_t(e.pitch_tiles),\n"
-    "              uint32_t(resolve_info.coordinate_info.width_div_8) * 8,\n"
-    "              resolve_info.height_div_8 * 8, uint32_t(d.copy_dest_format),\n"
-    "              uint32_t(d.copy_dest_endian), uint32_t(d.copy_dest_swap),\n"
-    "              resolve_info.copy_dest_extent_length ? \"copy\" : \"clear only\",\n"
-    "              uint32_t(resolve_info.rb_copy_control.copy_sample_select),\n"
-    "              resolve_info.rb_copy_control.color_clear_enable ||\n"
-    "                      resolve_info.rb_copy_control.depth_clear_enable\n"
-    "                  ? \", clears\"\n"
-    "                  : \"\"));\n"
+    "  EndRenderPass();  // tt-android T1: frame boundary for the GPU timestamps\n"
+    "  tt_gpu_time::Frame(deferred_command_buffer_, GetVulkanDevice());\n"), (
+    "        // queue, and also need to submit the release barrier.\n"
+    "        EndSubmission(true);\n",
+    "        // queue, and also need to submit the release barrier.\n"
+    "        tt_gpu_time::Stamp(deferred_command_buffer_,\n"
+    "                           \"between frames (GPU waiting for the game)\");  // tt-android T1\n"
+    "        EndSubmission(true);\n"), (
+    "    deferred_command_buffer_.CmdVkEndRenderPass();\n"
     "  }\n"
-    "  // Nothing to copy/clear.\n"), (
-    "  bool resolve_clear_needed = render_target_resolve_clear_values && resolve_clear_rectangle;\n",
-    "  for (uint32_t i = 0; i < render_target_count; ++i) {  // tt-android C1: census of transfers\n"
-    "    if (!render_targets[i]) continue;\n"
-    "    for (const Transfer& transfer : render_target_transfers[i]) {\n"
-    "      const RenderTargetKey dk = render_targets[i]->key();\n"
-    "      const RenderTargetKey sk = transfer.source->key();\n"
-    "      tt_census::Count(\"EDRAM ownership transfers (source -> destination)\",\n"
-    "                       tt_census::Fmt(\"%s fmt %u msaa %u pitch %u -> %s fmt %u msaa %u pitch %u\",\n"
-    "                                      sk.is_depth ? \"depth\" : \"colour\", sk.resource_format,\n"
-    "                                      uint32_t(sk.msaa_samples), sk.pitch_tiles_at_32bpp,\n"
-    "                                      dk.is_depth ? \"depth\" : \"colour\", dk.resource_format,\n"
-    "                                      uint32_t(dk.msaa_samples), dk.pitch_tiles_at_32bpp));\n"
-    "    }\n"
+    "  current_render_pass_ = VK_NULL_HANDLE;\n"
+    "  current_framebuffer_ = nullptr;\n"
+    "  in_render_pass_ = false;\n"
+    "}\n",
+    "    deferred_command_buffer_.CmdVkEndRenderPass();\n"
     "  }\n"
-    "  bool resolve_clear_needed = render_target_resolve_clear_values && resolve_clear_rectangle;\n"),
-    prelude=TT_CENSUS, includes=TT_CENSUS_INCLUDES)
-done.append("C1 census (renderer branch)")
+    "  current_render_pass_ = VK_NULL_HANDLE;\n"
+    "  current_framebuffer_ = nullptr;\n"
+    "  in_render_pass_ = false;\n"
+    "  tt_gpu_time::StampAfterPass(deferred_command_buffer_);  // tt-android T1\n"
+    "}\n"), (
+    "  if (!memexport_ranges_.empty()) {\n"
+    "    for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {\n"
+    "      shared_memory_->RangeWrittenByGpu(memexport_range.base_address_dwords << 2,\n",
+    "  tt_gpu_time::Draw(pixel_shader == nullptr,  // tt-android T1\n"
+    "                    primitive_processing_result.host_draw_vertex_count);\n"
+    "  if (!memexport_ranges_.empty()) {\n"
+    "    for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {\n"
+    "      shared_memory_->RangeWrittenByGpu(memexport_range.base_address_dwords << 2,\n"),
+    prelude=TT_GPU_TIME, includes=TT_GPU_TIME_INCLUDES)
+# Both pass-begin functions (normal and ownership-transfer): the same line, twice.
+_path = sdk / CP
+_text = _path.read_text()
+_old = "  __atomic_fetch_add(&tt_work_stats[9], 1, __ATOMIC_RELAXED);\n"
+if _text.count(_old) != 2:
+    sys.exit(CP + ": T1 pass-begin points not found")
+_stamp = (
+    "  {  // tt-android T1\n"
+    "    const auto tt_surface = register_file_->Get<reg::RB_SURFACE_INFO>();\n"
+    "    const auto tt_color = register_file_->Get<reg::RB_COLOR_INFO>();\n"
+    "    tt_gpu_time::StampPass(deferred_command_buffer_, uint64_t(framebuffer->framebuffer),\n"
+    "                           framebuffer->host_extent.width, framebuffer->host_extent.height,\n"
+    "                           uint32_t(tt_surface.surface_pitch), uint32_t(tt_surface.msaa_samples),\n"
+    "                           uint32_t(tt_color.color_base), \"%s\");\n"
+    "  }\n")
+_first = _text.index(_old) + len(_old)
+_second = _text.index(_old, _first) + len(_old)
+_text = (_text[:_first] + _stamp % "pass" + _text[_first:_second] + _stamp % "transfer pass"
+         + _text[_second:])
+_path.write_text(_text)
+done.append("T1 GPU time per render pass (renderer branch)")
 
 print("\n".join(done))

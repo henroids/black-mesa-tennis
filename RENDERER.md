@@ -20,14 +20,26 @@ Go back to the normal app's build:
 
 | Step | What | State |
 |---|---|---|
-| C1 | **Census**: which GPU features the game uses (`census.txt` in the logs, rewritten every 10 s). Draws exactly as the normal app. | **Done** (results below) |
+| C1 | **Census**: which GPU features the game uses. The census code is removed again. | **Done** (results below) |
 | C2 | **Plug-in skeleton**: `librexgpu-tt.so` (`stage2/renderer/`), loaded through the SDK's `gpu_plugin` seam when the start screen says **Renderer: New**. It forwards every call to the SDK renderer, so New must look and run exactly like Old; the test is only that it builds, loads and plays. | **Done**: Thor, Turnip Gen8 V39, 720p, FXAA, Renderer New: plug-in loaded, 60 FPS, GPU ~80-89 % busy @ 680 MHz, same as Old |
+| T1 | **GPU time per pass**: timestamps at every render-pass begin and end; `gpu_time.txt` in the logs lists, per 10 s, how many ms of each frame the GPU spends in each pass, in the copies after it, in the present step, and waiting. Draws exactly as before. Decides which part of the renderer to replace first. | **Build ready, waiting for logs** |
 | C3 | Own command processor in the plug-in: reads the game's command stream itself, shows the picture through its own swap path | — |
 | C4 | Render targets as plain Vulkan images (no EDRAM), resolves as image copies | — |
 | C5 | Shaders translated once to lean SPIR-V with real vertex inputs; vertex/index data in real buffers | — |
 | C6 | Textures, effects, menus; compare every venue against Old | — |
 
 Each step keeps the **Renderer: Old / New** row, so anything can be compared with the SDK renderer.
+
+Why T1 comes before C3-C6: the C2 logs show the emulator's GPU thread at only ~48 % of one core
+on the Thor, nearly half of it asleep, and its biggest single cost is memory page protection
+(9 %), not render-target emulation. So the remaining load is on the GPU itself, and until now
+its split was only estimated by switching things off. T1 measures it directly.
+
+### Testing T1
+
+1. Build and install the test app (command above).
+2. Renderer can stay on either setting. Play one match of at least two minutes, then quit.
+3. Export the logs (they now contain `game_gpu_time.txt`).
 
 ## C1 result: what the game asks of the GPU
 
