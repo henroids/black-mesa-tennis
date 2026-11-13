@@ -6,7 +6,7 @@ Xbox 360's GPU and its EDRAM). The `main` branch is the playable version and isn
 
 The branch builds a **separate test app**, "Table Tennis (renderer test)"
 (`org.tabletennis.recomp.renderertest`, `TableTennis-renderer-test.apk`), so it installs next to
-the normal app. It has its own settings, game disc choice, imported drivers and logs.
+the normal app. Its app icon is the normal one turned upside down (handles up). It has its own settings, game disc choice, imported drivers and logs.
 
 Build it:
 
