@@ -98,7 +98,7 @@ not listed in a row were **720p and Hidden passes: Skipped**; the game runs capp
 |---|---|---|---|---|
 | **AYN Thor** (reference) | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | FXAA | **60 FPS** in rallies (98% of a 6-minute session); menus 60. Graphics chip ~82% busy at 680 MHz. |
 | **Sony Xperia 1 V** | Snapdragon 8 Gen 2 (Adreno 740) | Turnip Gen8 V39 | AA Off (build v89) | **~60 FPS** over an 8-minute session (95% of it at 60), even after the phone lowered its CPU clock to stay cool (2.8 → 1.4 GHz). Some menu flicker. Needs a controller. |
-| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | **System (Qualcomm)** | FXAA | **~45–52 FPS** in matches; menus 60. A short pause (~0.3 s) as each match starts, as on the Thor; the first launch also stutters while graphics programs are prepared and saved. With the current build, the Turnip drivers tried (Turnip-Duo v5.1, Gen8 V38) crash at the first serve; an older build ran on Turnip at only ~20–25 FPS. |
+| **Retroid Pocket Duo** | Dragonwing Q-7790 (Adreno 722) | **System (Qualcomm)** | AA Off | **~50–53 FPS** in matches over an 18-minute session (about half the time at 60, never below ~45 apart from a few moments); menus 60. CPU ~61–65 °C. A short pause (~0.3 s) as each match starts, as on the Thor; the first launch also stutters while graphics programs are prepared and saved. With the current build, the Turnip drivers tried (Turnip-Duo v5.1, Gen8 V38) crash at the first serve; an older build ran on Turnip at only ~20–25 FPS. |
 | Xiaomi Mi Mix 3 | Snapdragon 845 (Adreno 630) | — | — | Not tested. Installs (Android 10), but much less powerful; expect it to be too slow. |
 
 Other Android devices with a recent Adreno GPU may work; reports are welcome (see
@@ -235,7 +235,7 @@ The game uses a controller, mapped like an Xbox 360 pad. Extra shortcuts while p
 ## Known issues
 
 - **60 FPS needs Hidden passes: Skipped** (the default) and a chip like the Thor's. Slower chips
-  run below 60 (Retroid Pocket Duo: ~45–52 FPS in matches).
+  run below 60 (Retroid Pocket Duo: ~50–53 FPS in matches).
 - **Brief stutters the first time each screen loads on a new device** (graphics programs being
   prepared; they're saved, so later launches don't repeat them).
 - **Retroid Pocket Duo:** use the system driver. The first launch stutters

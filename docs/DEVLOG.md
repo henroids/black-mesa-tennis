@@ -431,6 +431,10 @@ went from ~45 to ~35 FPS).
   4, then 0, and the multi-second freezes were gone. A ~0.3 s pause as each match starts remains;
   the emulator accounts for only ~0.05 s of it, and the Thor shows similar pauses, so it's the
   game loading the match.
+- **A longer session (v108, AA Off, 18 minutes):** ~52 FPS in matches (53.7 including menus),
+  half the time at 60 and almost never below 45; 10 stalls of 80 ms or more in 18 minutes; no
+  graphics program had to be prepared during play. The emulator's graphics thread sits at 86% of
+  a CPU core, so it's close to the Duo's limit.
 - **v108:** with the Thor at 60 and the Duo near 50, Henry removed the Frame rate options (40 FPS
   had only been useful in the high-30s days, and 30 is unplayable) and the Shaders option (always
   Wait). The game is now always capped at 60.
@@ -466,7 +470,7 @@ went from ~45 to ~35 FPS).
 
 Rallies run at a steady **60 FPS on the AYN Thor** (720p, FXAA, Turnip Gen8 V39) with the
 graphics chip ~82% busy, and at ~60 FPS on the Sony Xperia 1 V. The Retroid Pocket Duo plays at
-~45–52 FPS on its system driver.
+~50–53 FPS in matches on its system driver (an 18-minute session on v108).
 
 The remaining GPU time is spread across the emulator's per-draw work: pixels are only ~20–25% of
 it and the image copies ~8%. Lowering it much further would need a renderer of its own that
