@@ -13,7 +13,7 @@ test showed, and where things stand now. Last updated 2026-11-13 (build **v108**
   (Snapdragon 8 Gen 2, **Adreno 740**, Android 13, KGSL kernel driver).
 - **Current result (v108):** **steady 60 FPS in rallies** on the Thor (720p, FXAA, 60 FPS cap,
   Turnip Gen8 V39, Hidden passes Skipped), graphics chip ~82% busy at 680 MHz, app CPU ~150% of
-  a core. Also ~60 FPS on a Sony Xperia 1 V; ~45–52 FPS on a Retroid Pocket Duo (Adreno 722,
+  a core. Also ~60 FPS on a Sony Xperia 1 V; ~50–53 FPS on a Retroid Pocket Duo (Adreno 722,
   system driver). See section 6.
 - **Legal/data rules (important):**
   - The repo must never contain game code or data: no ISO, XEX, RPF, generated recompiled
@@ -211,6 +211,7 @@ turns off F10–F12 and F15–F18), `TT_UI_FONT` (loading screen font). There's 
 | **v106** | F19 also saves from a background thread within 3 s of any new pipeline. | Duo, same settings, three launches: cache 3,017 → 3,031 → 3,043 KB; slow pipeline creations **1, 1, 4** (92 on an empty cache); worst stall 0.3 s / 0.3 s / 1.6 s (the last one 3 new pipelines, ~1.3 s). Remaining at every launch, with no pipeline or shader work logged: ~0.68 s at 0:00, ~0.55 s at 0:10–0:15 (loading), and **~0.3 s right as the match starts (60 → ~40 FPS)**: the first-serve stutter. |
 | **v107** | D5 also times texture requests, memory uploads and whole draws (≥ 15 ms), to see whether the ~0.3 s match-start stall is in the emulator's draw path at all. | Duo, same settings: cache 3,218 KB, **no slow pipeline creation at all**. Match start (0:37): one texture request of 49 ms inside a 387 ms stall, so ~85 % of it is outside the emulator's draw path: the game loading the match (the Thor shows 0.3–2 s spikes at match start too). Not pursued. Black screen (owner's screenshot: overlay 'FPS: 0.0' in red, i.e. the game stopped presenting) in a second session: game frames stopped ~0:07, right after 'Startup Flash state 3' (main menu), while the game thread kept running; logs were exported ~3 s later, too short for the 10-s profile. Same startup sequence in every good session. Open: needs a capture that waits ~15 s on the black screen. |
 | **v108** | Launcher: **Frame rate** (60/40/30/Uncapped) and **Shaders** (Async/Wait) rows removed (owner): always `--framerate=60` (60 Hz screen mode where available) and `--async_shader_compilation=false`. Hidden passes kept under its name (owner: a 'shortcuts' label would invite turning it off). | — |
+| v108 on the Duo | 18-minute session, system driver, 720p, AA Off: 53.7 FPS average incl. menus, ~52 in matches (the earlier 46.6 was one 1.5-minute match); 51% of the time ~60, 44% ~45, 5% ~30; 10 stalls ≥ 80 ms; pipeline cache 3,294 KB, 0 slow creations; GPU-command thread 86% of a core (near its limit there); CPU 61–65 °C, app CPU ~200%. | README Duo row: ~50–53 FPS. |
 
 ### Ruled out (no measurable effect)
 Occlusion queries (the game makes none), frames in flight (beyond 3 hurts pacing), guest
@@ -261,7 +262,9 @@ State at v108, AYN Thor (Adreno 740, Turnip Gen8 V39), rallies at 720p, FXAA, 60
 - Presentation: since F8/F14 the screen shows every game frame.
 
 **Other devices:** Xperia 1 V (same chip): ~60 FPS, keeps it while throttling. Retroid Pocket
-Duo (Adreno 722, system driver): ~45–52 FPS in matches (average 46.6), app CPU ~280% of a
+Duo (Adreno 722, system driver, AA Off): ~50–53 FPS in matches (18-minute session on v108: 53.7
+average incl. menus, 51% of the time ~60, 44% ~45, 5% ~30; 10 stalls ≥ 80 ms; 0 slow pipeline
+creations; GPU-command thread 86% of a core, CPU ~61–65 °C), app CPU ~200–280% of a
 core (its 40 FPS mode ran matches at ~22 FPS; the option was removed in v108); first-serve stutter fixed by F19 apart from the game's own match loading; occasional black
 screen between menus (open).
 
@@ -304,7 +307,8 @@ The owner considers the Thor work finished (60 FPS reached). Open items, in orde
    performance hints (lets Android lower clocks when frames are easy; the NFS Carbon port uses
    it); upstream fix `cf75b896` (vertex buffers at an unchanged address are never re-requested
    in v0.10.0).
-4. **An own PM4-level renderer** (the NFS Carbon route) is the proven way to large further gains
+4. **Started on branch `renderer`** (see `RENDERER.md` there; separate test app, main untouched).
+   **An own PM4-level renderer** (the NFS Carbon route) is the proven way to large further gains
    on this SDK: no game hooks, ~9–10k lines, replaces `rexgpu-xenos` through the `gpu_plugin`
    seam, Xenos backend kept as a fallback. Several weeks of test builds, since nothing can be run
    without the owner's devices. A high-level renderer like the Naruto recomps' (hooking the
